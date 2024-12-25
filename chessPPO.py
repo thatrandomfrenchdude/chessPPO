@@ -13,116 +13,155 @@ from datetime import datetime
 import logging
 import traceback
 
-from src.ChessEnv import ChessEnv
-from src.PPOModels import ChessPolicy, ChessValue
-from src.TrainingMetrics import TrainingMetrics
+from src.ChessEnv import ChessEnv, save_game, setup_games_directory
+from src.PPOModels import ChessPolicy, ChessValue, encode_fen, choose_move
+from src.TrainingMetrics import TrainingMetrics, plot_training_progress
 
+##### CONFIGURATION #####
 # Configuration section - modify these hyperparameters as needed
-config = {
+config = {}
+
+ppo_config = {
     # PPO hyperparameters
     'lr': 0.0005,
     'gamma': 0.99,
     'epsilon_clip': 0.1,
     'k_epochs': 3,
-    'self_play_games': 1000,
+    'self_play_games': 100,
     'max_moves': 100,
     'device': 'cpu',
 
-    # Agent behavior configuration
-    'aggression': 0.0,  # Range [-1, 1] for defensive to aggressive play
+    # manual configuration
+    'print_self_play': False # Set to True to print self-play game details
+}
 
-    # Default save/load paths for model checkpoints
+path_config = {
+    # default save/load paths for model checkpoints
     'save_model_path': 'models/chess_ppo_checkpoint.pth',
     'load_model_path': 'models/chess_ppo_checkpoint.pth', # None  # Set this to a file path to load existing weights
 
-    # Self-play game configuration
+    # self-play game save file configuration
     'games_dir': 'self-play-games', # Directory to save self-play games
     'games_per_file': 25, # Number of games to save in each PGN file
-    'print_self_play': False, # Set to True to print self-play game details
 
-    # Evaluation and plotting configuration
-    'eval_games': 20,  # Number of games to evaluate performance
-    'plot_metrics': True,  # Whether to plot training metrics
-    'metrics_smoothing': 10,  # Window for smoothing metrics
-
-    # Training metrics directory
+    # training metrics directory
     'metrics_dir': 'training-metrics',  # Directory to save metrics
     'metrics_format': 'json'  # Format to save metrics
 }
 
+eval_config = {
+    'eval_games': 20,  # Number of games to evaluate performance
+    'plot_metrics': True,  # Whether to plot training metrics
+    'metrics_smoothing': 10,  # Window for smoothing metrics
+}
+
+agent_behavior_config = {
+    'aggression': 0.0,  # Range [-1, 1] for defensive to aggressive play
+}
+
+# unify configurations
+config.update(ppo_config)
+config.update(path_config)
+config.update(eval_config)
+config.update(agent_behavior_config)
+##### END CONFIGURATION #####
+
+##### LOGGING #####
 logging.basicConfig(
     filename=f'logs/chess_ppo_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log',
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+##### END LOGGING #####
 
-def encode_fen(fen):
-    # Create a binary vector representation of the chess position
-    piece_map = {'P': 0, 'N': 1, 'B': 2, 'R': 3, 'Q': 4, 'K': 5,
-                 'p': 6, 'n': 7, 'b': 8, 'r': 9, 'q': 10, 'k': 11}
+# def encode_fen(fen):
+#     '''
+#     Create a binary vector representation of the chess position.
+#     '''
     
-    board_tensor = torch.zeros(12, 8, 8)  # 12 piece types, 8x8 board
+#     piece_map = {'P': 0, 'N': 1, 'B': 2, 'R': 3, 'Q': 4, 'K': 5,
+#                  'p': 6, 'n': 7, 'b': 8, 'r': 9, 'q': 10, 'k': 11}
     
-    # Parse the FEN string
-    board_str = fen.split(' ')[0]
-    row, col = 0, 0
+#     board_tensor = torch.zeros(12, 8, 8)  # 12 piece types, 8x8 board
     
-    for char in board_str:
-        if char == '/':
-            row += 1
-            col = 0
-        elif char.isdigit():
-            col += int(char)
-        else:
-            board_tensor[piece_map[char]][row][col] = 1
-            col += 1
+#     # Parse the FEN string
+#     board_str = fen.split(' ')[0]
+#     row, col = 0, 0
+    
+#     for char in board_str:
+#         if char == '/':
+#             row += 1
+#             col = 0
+#         elif char.isdigit():
+#             col += int(char)
+#         else:
+#             board_tensor[piece_map[char]][row][col] = 1
+#             col += 1
             
-    return board_tensor.flatten()
+#     return board_tensor.flatten()
 
-def choose_move(env, policy_net):
-    moves = env.get_legal_moves()
-    if not moves:
-        return None
-    
-    # Get state representation
-    state = encode_fen(env.board.fen())
-    state = state.unsqueeze(0)
-    
-    # Get action probabilities with numerical stability
-    with torch.no_grad():
-        logits = policy_net(state)
-        # Add temperature scaling for numerical stability
-        logits = logits / 10.0  # Reduce extreme values
-        probs = nn.Softmax(dim=1)(logits)
-    
-    # Create move lookup with validation
-    move_probs = []
-    for move in moves:
-        move_idx = (move.from_square * 64 + move.to_square)
-        if move_idx < 4096:  # Ensure index is within bounds
-            prob = probs[0][move_idx].item()
-            if prob > 0 and not np.isnan(prob) and not np.isinf(prob):
-                move_probs.append((move, prob))
-    
-    # Fallback to random move if no valid probabilities
-    if not move_probs:
-        return random.choice(moves)
-    
-    # Safe probability normalization
-    moves, probs = zip(*move_probs)
-    probs = torch.tensor(probs)
-    probs = torch.clamp(probs, min=1e-10)  # Prevent zero probabilities
-    probs = probs / probs.sum()  # Normalize
-    
-    try:
-        move_idx = torch.multinomial(probs, 1).item()
-        return moves[move_idx]
-    except RuntimeError:
-        # Fallback to random choice if sampling fails
-        return random.choice(moves)
+# def choose_move(env, policy_net):
+#     '''
+#     Choose a move using the policy network with temperature scaling.
 
-# Add PPO training function
+#     Args:
+#         env: Chess environment object
+#         policy_net: Policy network model
+#     '''
+
+#     moves = env.get_legal_moves()
+#     if not moves:
+#         return None
+    
+#     # Get state representation
+#     state = encode_fen(env.board.fen())
+#     state = state.unsqueeze(0)
+    
+#     # Get action probabilities with numerical stability
+#     with torch.no_grad():
+#         logits = policy_net(state)
+#         # Add temperature scaling for numerical stability
+#         logits = logits / 10.0  # Reduce extreme values
+#         probs = nn.Softmax(dim=1)(logits)
+    
+#     # Create move lookup with validation
+#     move_probs = []
+#     for move in moves:
+#         move_idx = (move.from_square * 64 + move.to_square)
+#         if move_idx < 4096:  # Ensure index is within bounds
+#             prob = probs[0][move_idx].item()
+#             if prob > 0 and not np.isnan(prob) and not np.isinf(prob):
+#                 move_probs.append((move, prob))
+    
+#     # Fallback to random move if no valid probabilities
+#     if not move_probs:
+#         return random.choice(moves)
+    
+#     # Safe probability normalization
+#     moves, probs = zip(*move_probs)
+#     probs = torch.tensor(probs)
+#     probs = torch.clamp(probs, min=1e-10)  # Prevent zero probabilities
+#     probs = probs / probs.sum()  # Normalize
+    
+#     try:
+#         move_idx = torch.multinomial(probs, 1).item()
+#         return moves[move_idx]
+#     except RuntimeError:
+#         # Fallback to random choice if sampling fails
+#         return random.choice(moves)
+
 def train_ppo(trajectory, policy_net, value_net, optimizer_p, optimizer_v):
+    '''
+    Train the policy and value networks using PPO.
+    
+    Args:
+        trajectory: Dictionary containing trajectory data
+        policy_net: Policy network model
+        value_net: Value network model
+        optimizer_p: Policy network optimizer
+        optimizer_v: Value network optimizer
+    '''
+
     try:
         states = trajectory['states']
         actions = trajectory['actions']
@@ -207,33 +246,55 @@ def train_ppo(trajectory, policy_net, value_net, optimizer_p, optimizer_v):
         logging.error(traceback.format_exc())
         raise
 
-# Add new function to save games
-def save_game(board, result, game_index):
-    game = chess.pgn.Game()
+# def save_game(board, result, game_index):
+#     '''
+#     Save the game as a PGN file.
     
-    # Add game metadata
-    game.headers["Date"] = datetime.now().strftime("%Y.%m.%d")
-    game.headers["White"] = "ChessPPO"
-    game.headers["Black"] = "ChessPPO"
-    game.headers["Result"] = result
-    game.headers["Event"] = f"Self-play game {game_index}"
-    game.headers["Round"] = str(game_index)
-    
-    # Add moves
-    node = game
-    for move in board.move_stack:
-        node = node.add_variation(move)
-    
-    return game
+#     Args:
+#         board: Chess board object
+#         result: Game result string
+#         game_index: Index of the game
+#     '''
 
-# Update self_play_episode to include training
+#     game = chess.pgn.Game()
+    
+#     # Add game metadata
+#     game.headers["Date"] = datetime.now().strftime("%Y.%m.%d")
+#     game.headers["White"] = "ChessPPO"
+#     game.headers["Black"] = "ChessPPO"
+#     game.headers["Result"] = result
+#     game.headers["Event"] = f"Self-play game {game_index}"
+#     game.headers["Round"] = str(game_index)
+    
+#     # Add moves
+#     node = game
+#     for move in board.move_stack:
+#         node = node.add_variation(move)
+    
+#     return game
+
 def self_play_episode(env, policy_net, value_net, optimizer_p, optimizer_v, game_index):
+    '''
+    Play a single self-play game episode and train the policy network.
+    
+    Args:
+        env: Chess environment object
+        policy_net: Policy network model
+        value_net: Value network model
+        optimizer_p: Policy network optimizer
+        optimizer_v: Value network optimizer
+        game_index: Index of the game
+
+    Returns:
+        trajectory: Dictionary containing trajectory data
+    '''
+
     states, actions, rewards, values, log_probs = [], [], [], [], []
     
     if config['print_self_play']:
         print(f"\nStarting game {game_index + 1}")
     
-    # Reset only at start of new game
+    # reset the environment for the start of a new game
     obs = env.reset()
     done = False
     episode_reward = 0
@@ -302,62 +363,86 @@ def self_play_episode(env, policy_net, value_net, optimizer_p, optimizer_v, game
     
     return trajectory
 
-# Add at start of main() function
-def setup_games_directory():
-    if not os.path.exists(config['games_dir']):
-        os.makedirs(config['games_dir'])
+# def setup_games_directory():
+#     '''
+#     Create the games directory if it doesn't exist.
+#     '''
 
-def plot_training_progress(metrics, save_path='training_progress.png'):
-    if not metrics.episode_rewards:
-        logging.warning("No metrics to plot - skipping plot generation")
-        return
+#     if not os.path.exists(config['games_dir']):
+#         os.makedirs(config['games_dir'])
+
+# def plot_training_progress(metrics, save_path='training_progress.png'):
+#     '''
+#     Plot training progress using metrics data.
+
+#     Args:
+#         metrics: TrainingMetrics object
+#         save_path: File path to save the plot
+#     '''
+
+#     if not metrics.episode_rewards:
+#         logging.warning("No metrics to plot - skipping plot generation")
+#         return
         
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
+#     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
     
-    # Smooth metrics with validation
-    window = min(config['metrics_smoothing'], len(metrics.episode_rewards))
-    if window < 1:
-        window = 1
+#     # Smooth metrics with validation
+#     window = min(config['metrics_smoothing'], len(metrics.episode_rewards))
+#     if window < 1:
+#         window = 1
         
-    # Plot episode rewards if data exists
-    if len(metrics.episode_rewards) >= window:
-        smooth_rewards = np.convolve(metrics.episode_rewards, 
-                                   np.ones(window)/window, mode='valid')
-        ax1.plot(smooth_rewards)
-    ax1.set_title('Average Episode Reward')
-    ax1.set_xlabel('Episode')
-    ax1.set_ylabel('Reward')
+#     # Plot episode rewards if data exists
+#     if len(metrics.episode_rewards) >= window:
+#         smooth_rewards = np.convolve(metrics.episode_rewards, 
+#                                    np.ones(window)/window, mode='valid')
+#         ax1.plot(smooth_rewards)
+#     ax1.set_title('Average Episode Reward')
+#     ax1.set_xlabel('Episode')
+#     ax1.set_ylabel('Reward')
     
-    # Plot game lengths if data exists
-    if len(metrics.game_lengths) >= window:
-        smooth_lengths = np.convolve(metrics.game_lengths,
-                                   np.ones(window)/window, mode='valid')
-        ax2.plot(smooth_lengths)
-    ax2.set_title('Average Game Length')
-    ax2.set_xlabel('Episode')
-    ax2.set_ylabel('Moves')
+#     # Plot game lengths if data exists
+#     if len(metrics.game_lengths) >= window:
+#         smooth_lengths = np.convolve(metrics.game_lengths,
+#                                    np.ones(window)/window, mode='valid')
+#         ax2.plot(smooth_lengths)
+#     ax2.set_title('Average Game Length')
+#     ax2.set_xlabel('Episode')
+#     ax2.set_ylabel('Moves')
     
-    # Plot material advantage if data exists
-    if len(metrics.material_advantages) >= window:
-        smooth_material = np.convolve(metrics.material_advantages,
-                                    np.ones(window)/window, mode='valid')
-        ax3.plot(smooth_material)
-    ax3.set_title('Average Material Advantage')
-    ax3.set_xlabel('Episode')
-    ax3.set_ylabel('Material Score')
+#     # Plot material advantage if data exists
+#     if len(metrics.material_advantages) >= window:
+#         smooth_material = np.convolve(metrics.material_advantages,
+#                                     np.ones(window)/window, mode='valid')
+#         ax3.plot(smooth_material)
+#     ax3.set_title('Average Material Advantage')
+#     ax3.set_xlabel('Episode')
+#     ax3.set_ylabel('Material Score')
     
-    # Plot win rate
-    if metrics.win_rates:
-        ax4.plot(metrics.win_rates)
-    ax4.set_title('Win Rate')
-    ax4.set_xlabel('Episode')
-    ax4.set_ylabel('Win Rate')
+#     # Plot win rate
+#     if metrics.win_rates:
+#         ax4.plot(metrics.win_rates)
+#     ax4.set_title('Win Rate')
+#     ax4.set_xlabel('Episode')
+#     ax4.set_ylabel('Win Rate')
     
-    plt.tight_layout()
-    plt.savefig(save_path)
-    plt.close()
+#     plt.tight_layout()
+#     plt.savefig(save_path)
+#     plt.close()
 
 def evaluate_model(env, policy_net, value_net, num_games=config['eval_games']):
+    '''
+    Evaluate the model performance over a number of games.
+    
+    Args:
+        env: Chess environment object
+        policy_net: Policy network model
+        value_net: Value network model
+        num_games: Number of games to evaluate
+        
+    Returns:
+        metrics: TrainingMetrics object
+    '''
+    
     metrics = TrainingMetrics()
     
     for game in range(num_games):
@@ -384,7 +469,17 @@ def evaluate_model(env, policy_net, value_net, num_games=config['eval_games']):
     return metrics
 
 def load_or_create_model(model_class, model_path, device):
-    """Load existing model or create new one"""
+    '''
+    Load existing model or create new one
+    
+    Args:
+        model_class: Model class to instantiate
+        model_path: File path to load model weights
+        device: Device to load model on
+        
+    Returns:
+        model: Model object    
+    '''
     if os.path.exists(model_path):
         print(f"Loading existing model from {model_path}")
         model = model_class().to(device)
@@ -400,8 +495,12 @@ def load_or_create_model(model_class, model_path, device):
         return model
 
 def main():
+    '''
+    Main training loop for Chess PPO.
+    '''
+
     try:
-        setup_games_directory()
+        setup_games_directory(config['games_dir'])
         if not os.path.exists(config['metrics_dir']):
             os.makedirs(config['metrics_dir'])
         
@@ -461,7 +560,7 @@ def main():
         # Final evaluation and plotting only if we have data
         if sum(training_metrics.win_draw_loss) > 0:
             if config['plot_metrics']:
-                plot_training_progress(training_metrics)
+                plot_training_progress(training_metrics, config['metrics_smoothing'])
                 metrics_file = training_metrics.save_metrics(config['metrics_dir'])
                 
                 print("\nTraining Summary:")

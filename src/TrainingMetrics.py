@@ -2,6 +2,70 @@ import os
 from datetime import datetime
 import numpy as np
 import json
+import matplotlib.pyplot as plt
+import logging 
+
+def plot_training_progress(
+    metrics,
+    metrics_smoothing,
+    save_path='training_progress.png'
+):
+    '''
+    Plot training progress using metrics data.
+
+    Args:
+        metrics: TrainingMetrics object
+        save_path: File path to save the plot
+    '''
+
+    if not metrics.episode_rewards:
+        logging.warning("No metrics to plot - skipping plot generation")
+        return
+        
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
+    
+    # Smooth metrics with validation
+    window = min(metrics_smoothing, len(metrics.episode_rewards))
+    if window < 1:
+        window = 1
+        
+    # Plot episode rewards if data exists
+    if len(metrics.episode_rewards) >= window:
+        smooth_rewards = np.convolve(metrics.episode_rewards, 
+                                   np.ones(window)/window, mode='valid')
+        ax1.plot(smooth_rewards)
+    ax1.set_title('Average Episode Reward')
+    ax1.set_xlabel('Episode')
+    ax1.set_ylabel('Reward')
+    
+    # Plot game lengths if data exists
+    if len(metrics.game_lengths) >= window:
+        smooth_lengths = np.convolve(metrics.game_lengths,
+                                   np.ones(window)/window, mode='valid')
+        ax2.plot(smooth_lengths)
+    ax2.set_title('Average Game Length')
+    ax2.set_xlabel('Episode')
+    ax2.set_ylabel('Moves')
+    
+    # Plot material advantage if data exists
+    if len(metrics.material_advantages) >= window:
+        smooth_material = np.convolve(metrics.material_advantages,
+                                    np.ones(window)/window, mode='valid')
+        ax3.plot(smooth_material)
+    ax3.set_title('Average Material Advantage')
+    ax3.set_xlabel('Episode')
+    ax3.set_ylabel('Material Score')
+    
+    # Plot win rate
+    if metrics.win_rates:
+        ax4.plot(metrics.win_rates)
+    ax4.set_title('Win Rate')
+    ax4.set_xlabel('Episode')
+    ax4.set_ylabel('Win Rate')
+    
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
 
 class TrainingMetrics:
     def __init__(self):

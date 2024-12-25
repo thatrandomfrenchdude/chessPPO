@@ -1,5 +1,7 @@
 import chess
 import chess.pgn
+from datetime import datetime
+import os
 
 class ChessEnv:
     def __init__(self, config):
@@ -165,3 +167,41 @@ class ChessEnv:
         )
         
         return total_score, False
+
+
+def save_game(board, result, game_index):
+    '''
+    Save the game as a PGN file.
+    
+    Args:
+        board: Chess board object
+        result: Game result string
+        game_index: Index of the game
+    '''
+
+    game = chess.pgn.Game()
+    
+    # Add game metadata
+    game.headers["Date"] = datetime.now().strftime("%Y.%m.%d")
+    game.headers["White"] = "ChessPPO"
+    game.headers["Black"] = "ChessPPO"
+    game.headers["Result"] = result
+    game.headers["Event"] = f"Self-play game {game_index}"
+    game.headers["Round"] = str(game_index)
+    
+    # Add moves
+    node = game
+    for move in board.move_stack:
+        node = node.add_variation(move)
+    
+    return game
+
+def setup_games_directory(
+    games_dir='games'
+):
+    '''
+    Create the games directory if it doesn't exist.
+    '''
+
+    if not os.path.exists(games_dir):
+        os.makedirs(games_dir)
