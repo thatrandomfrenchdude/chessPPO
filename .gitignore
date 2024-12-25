@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+.env
+.venv
+venv/
+ENV/
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# First ignore everything
+*
+!*/
+
+# Then whitelist specific files and directories
+!README.md
+!requirements.txt
+!chessPPO.py
+!src/
+!src/ChessEnv.py
+!src/PPOModels.py
+!src/TrainingMetrics.py
+!.gitignore
+
+# Keep directories but ignore their contents
+models/*
+self-play-games/*
+training-metrics/*
+logs/*
+
+# Create empty .gitkeep files to track empty directories
+!models/.gitkeep
+!self-play-games/.gitkeep
+!training-metrics/.gitkeep
+!logs/.gitkeep
