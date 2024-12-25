@@ -24,6 +24,11 @@ var/
 venv/
 ENV/
 
+# Specific virtual environment
+chess-ppo-venv/
+chess-ppo-venv/**
+# chess-ppo-venv/lib/python3.12/site-packages/torchgen/
+
 # IDEs and editors
 .idea/
 .vscode/
