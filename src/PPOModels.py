@@ -2,12 +2,12 @@ import torch
 import torch.nn as nn
 import random
 import numpy as np
+import os
 
-
+# policy network to choose moves
 class ChessPolicy(nn.Module):
     def __init__(self):
         super().__init__()
-        # Simpler architecture with better numerical stability
         self.net = nn.Sequential(
             nn.Linear(768, 1024),
             nn.LayerNorm(1024),
@@ -22,6 +22,7 @@ class ChessPolicy(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+# critic network to evaluate positions
 class ChessValue(nn.Module):
     def __init__(self):
         super().__init__()
@@ -127,3 +128,29 @@ def choose_move(env, policy_net):
     except RuntimeError:
         # Fallback to random choice if sampling fails
         return random.choice(moves)
+    
+def load_or_create_model(model_class, model_path, device):
+    '''
+    Load existing model or create new one
+    
+    Args:
+        model_class: Model class to instantiate
+        model_path: File path to load model weights
+        device: Device to load model on
+        
+    Returns:
+        model: Model object    
+    '''
+    if os.path.exists(model_path):
+        print(f"Loading existing model from {model_path}")
+        model = model_class().to(device)
+        model.load_state_dict(torch.load(model_path))
+        return model
+    else:
+        print(f"No existing model found at {model_path}, creating new model")
+        model = model_class().to(device)
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(model_path), exist_ok=True)
+        # Save initial model
+        torch.save(model.state_dict(), model_path)
+        return model

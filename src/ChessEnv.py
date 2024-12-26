@@ -205,3 +205,13 @@ def setup_games_directory(
 
     if not os.path.exists(games_dir):
         os.makedirs(games_dir)
+
+def setup_metrics_directory(
+    metrics_dir='training-metrics'
+):
+    '''
+    Create the metrics directory if it doesn't exist.
+    '''
+
+    if not os.path.exists(metrics_dir):
+        os.makedirs(metrics_dir)

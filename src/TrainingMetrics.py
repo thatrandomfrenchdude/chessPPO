@@ -5,6 +5,27 @@ import json
 import matplotlib.pyplot as plt
 import logging 
 
+def final_evaluation(
+    training_metrics,
+    plot_metrics,
+    metrics_smoothing,
+    metrics_dir
+):
+    # Final evaluation and plotting only if we have data
+    if sum(training_metrics.win_draw_loss) > 0:
+        if plot_metrics:
+            plot_training_progress(training_metrics, metrics_smoothing)
+            metrics_file = training_metrics.save_metrics(metrics_dir)
+            
+            print("\nTraining Summary:")
+            print(f"Total games completed: {sum(training_metrics.win_draw_loss)}")
+            print(f"Wins: {training_metrics.win_draw_loss[0]}")
+            print(f"Draws: {training_metrics.win_draw_loss[1]}")
+            print(f"Losses: {training_metrics.win_draw_loss[2]}")
+            print(f"\nDetailed metrics saved to: {metrics_file}")
+    else:
+        print("\nNo games completed successfully - no metrics to plot")
+
 def plot_training_progress(
     metrics,
     metrics_smoothing,
