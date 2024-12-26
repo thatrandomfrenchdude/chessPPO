@@ -4,59 +4,30 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import traceback
+import yaml
+from pathlib import Path
 
 from src.ChessEnv import ChessEnv, save_game, setup_games_directory, setup_metrics_directory
 from src.PPOModels import ChessPolicy, ChessValue, encode_fen, choose_move, load_or_create_model
 from src.TrainingMetrics import TrainingMetrics, final_evaluation
 
-##### CONFIGURATION #####
-# Configuration section - modify these hyperparameters as needed
-config = {}
+def load_config():
+    """Load configuration from yaml file"""
+    config_path = Path(__file__).parent / "config.yaml"
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    
+    # Flatten config for backwards compatibility
+    flat_config = {}
+    flat_config.update(config['ppo'])
+    flat_config.update(config['paths'])
+    flat_config.update(config['evaluation'])
+    flat_config.update(config['agent'])
+    
+    return flat_config
 
-ppo_config = {
-    # PPO hyperparameters
-    'lr': 0.0005,
-    'gamma': 0.99,
-    'epsilon_clip': 0.1,
-    'k_epochs': 3,
-    'self_play_games': 100,
-    'max_moves': 100,
-    'device': 'cpu',
-
-    # manual configuration
-    'print_self_play': False # Set to True to print self-play game details
-}
-
-path_config = {
-    # default save/load paths for model checkpoints
-    'save_model_path': 'models/chess_ppo_checkpoint.pth',
-    'load_model_path': 'models/chess_ppo_checkpoint.pth', # None  # Set this to a file path to load existing weights
-
-    # self-play game save file configuration
-    'games_dir': 'self-play-games', # Directory to save self-play games
-    'games_per_file': 25, # Number of games to save in each PGN file
-
-    # training metrics directory
-    'metrics_dir': 'training-metrics',  # Directory to save metrics
-    'metrics_format': 'json'  # Format to save metrics
-}
-
-eval_config = {
-    'eval_games': 20,  # Number of games to evaluate performance
-    'plot_metrics': True,  # Whether to plot training metrics
-    'metrics_smoothing': 10,  # Window for smoothing metrics
-}
-
-agent_behavior_config = {
-    'aggression': 0.0,  # Range [-1, 1] for defensive to aggressive play
-}
-
-# unify configurations
-config.update(ppo_config)
-config.update(path_config)
-config.update(eval_config)
-config.update(agent_behavior_config)
-##### END CONFIGURATION #####
+# Load configuration
+config = load_config()
 
 ##### LOGGING #####
 logging.basicConfig(
