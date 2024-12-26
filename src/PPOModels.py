@@ -1,8 +1,8 @@
-import torch
-import torch.nn as nn
-import random
 import numpy as np
 import os
+import random
+import torch
+import torch.nn as nn
 
 # policy network to choose moves
 class ChessPolicy(nn.Module):
