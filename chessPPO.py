@@ -17,7 +17,6 @@ def load_config():
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
     
-    # Flatten config for backwards compatibility
     flat_config = {}
     flat_config.update(config['ppo'])
     flat_config.update(config['paths'])
