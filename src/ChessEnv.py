@@ -46,9 +46,15 @@ class ChessEnv:
     def get_legal_moves(self):
         return list(self.board.legal_moves)
 
-    def get_observation(self):
+    # TODO: improve the observations about the environment
+    # to give more context to the policy network
+    def get_observation(self) -> dict:
         # Simple serialization of board (could be improved)
-        return self.board.fen()
+        obs = {
+            'fen': self.board.fen(),
+            'done': self.board.is_game_over(),
+        }
+        return obs
 
     def calculate_reward(self):
         piece_values = {'P': 1, 'N': 3, 'B': 3, 'R': 5, 'Q': 9, 'K': 0}

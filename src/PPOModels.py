@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import random
+import sys
 import torch
 import torch.nn as nn
 
@@ -79,78 +80,50 @@ def encode_fen(fen):
             
     return board_tensor.flatten()
 
-def choose_move(env, policy_net):
+def choose_move(
+    legal_moves: list,
+    policy_net: ChessPolicy,
+    board_fen: str,
+    temperature: float = 10.0
+) -> str:
     '''
     Choose a move using the policy network with temperature scaling.
-
-    Args:
-        env: Chess environment object
-        policy_net: Policy network model
     '''
-
-    moves = env.get_legal_moves()
-    if not moves:
-        return None
     
     # Get state representation
-    state = encode_fen(env.board.fen())
+    state = encode_fen(board_fen)
     state = state.unsqueeze(0)
     
-    # Get action probabilities with numerical stability
+    # Get action probabilities
     with torch.no_grad():
         logits = policy_net(state)
-        # Add temperature scaling for numerical stability
-        logits = logits / 10.0  # Reduce extreme values
+        logits = logits / temperature  # Temperature scaling to match chessPPO.py
         probs = nn.Softmax(dim=1)(logits)
     
-    # Create move lookup with validation
+    # Create move lookup with all the moves and their probabilities
     move_probs = []
-    for move in moves:
-        move_idx = (move.from_square * 64 + move.to_square)
-        if move_idx < 4096:  # Ensure index is within bounds
+    for move in legal_moves:
+        move_idx = move.from_square * 64 + move.to_square
+        if move_idx < 4096:
             prob = probs[0][move_idx].item()
             if prob > 0 and not np.isnan(prob) and not np.isinf(prob):
                 move_probs.append((move, prob))
     
-    # Fallback to random move if no valid probabilities
+    # system fault if there are no valid moves
+    # there is a chack for legal moves prior to the call 
     if not move_probs:
-        return random.choice(moves)
-    
-    # Safe probability normalization
-    moves, probs = zip(*move_probs)
-    probs = torch.tensor(probs)
-    probs = torch.clamp(probs, min=1e-10)  # Prevent zero probabilities
-    probs = probs / probs.sum()  # Normalize
+        sys.exit("Error: no valid moves.")
+        # return random.choice(moves)
+        
+    # Sample move based on probabilities
+    moves, probs = zip(*move_probs) # unzip the tuples of moves and probabilities
+    probs = torch.tensor(probs) # convert to tensor
+    probs = torch.clamp(probs, min=1e-10)  # avoid log(0)
+    probs = probs / probs.sum() # normalize probabilities
     
     try:
         move_idx = torch.multinomial(probs, 1).item()
         return moves[move_idx]
     except RuntimeError:
-        # Fallback to random choice if sampling fails
-        return random.choice(moves)
-    
-def load_or_create_model(model_class, model_path, device):
-    '''
-    Load existing model or create new one
-    
-    Args:
-        model_class: Model class to instantiate
-        model_path: File path to load model weights
-        device: Device to load model on
-        
-    Returns:
-        model: Model object    
-    '''
-    if os.path.exists(model_path):
-        print(f"Loading existing model from {model_path}")
-        model = model_class().to(device)
-        model.load_state_dict(torch.load(model_path))
-        return model
-    else:
-        print(f"No existing model found at {model_path}, creating new model")
-        model = model_class().to(device)
-        # Create directory if it doesn't exist
-        os.makedirs(os.path.dirname(model_path), exist_ok=True)
-        # Save initial model
-        torch.save(model.state_dict(), model_path)
-        return model
+        sys.exit("Error: move_idx is out of bounds.")
+        # return random.choice(moves)

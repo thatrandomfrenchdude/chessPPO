@@ -1,5 +1,7 @@
 from datetime import datetime
 import logging
+import os
+import sys
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -8,232 +10,359 @@ import yaml
 from pathlib import Path
 
 from src.ChessEnv import ChessEnv, save_game, setup_games_directory, setup_metrics_directory
-from src.PPOModels import ChessPolicy, ChessValue, encode_fen, choose_move, load_or_create_model
-from src.TrainingMetrics import TrainingMetrics, final_evaluation
+from src.PPOModels import ChessPolicy, ChessValue, encode_fen, choose_move
+from src.TrainingMetrics import TrainingMetrics, plot_training_progress
 
-def load_config():
-    """Load configuration from yaml file"""
-    config_path = Path(__file__).parent / "config.yaml"
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    
-    flat_config = {}
-    flat_config.update(config['ppo'])
-    flat_config.update(config['paths'])
-    flat_config.update(config['evaluation'])
-    flat_config.update(config['agent'])
-    
-    return flat_config
-
-# Load configuration
-config = load_config()
-
-##### LOGGING #####
 logging.basicConfig(
     filename=f'logs/chess_ppo_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log',
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
-##### END LOGGING #####
 
-def training_loop(
-    env,
-    policy_net,
-    value_net,
-    optimizer_p,
-    optimizer_v,
-    training_metrics
-):
-    print("\nStarting training games...")
+# make an app class from the code
+class ChessPPOApp:
+    def __init__(self):
+        # you're on the clock!
+        self.start_time = datetime.now()
+        
+        # load the configuration
+        self.config = self.load_config()
+
+        # load or create the ppo policy networks
+        print(self.config)
+        self.policy_net = self.load_or_create_model(ChessPolicy, self.config['load_model_path'])
+        self.value_net = self.load_or_create_model(ChessValue, self.config['load_model_path'].replace('checkpoint', 'value'))
+
+        # initialize the optimizers
+        self.optimizer_p = optim.Adam(self.policy_net.parameters(), lr=self.config['lr']) # policy network optimizer
+        self.optimizer_v = optim.Adam(self.value_net.parameters(), lr=self.config['lr']) # value network optimizer
+
+        # initialize the environment
+        self.env = ChessEnv(self.config)
+
+        # initialize a set of training metrics for the app
+        self.training_metrics = TrainingMetrics()
+
+    def load_config(self):
+        """Load configuration from yaml file"""
+        config_path = Path(__file__).parent / "config.yaml"
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+
+        flat_config = {}
+        flat_config.update(config['ppo'])
+        flat_config.update(config['paths'])
+        flat_config.update(config['metrics'])
+        flat_config.update(config['agent'])
+
+        return flat_config
+
+    def load_or_create_model(
+        self,
+        model_class: nn.Module,
+        model_path: str,
+    ) -> nn.Module:
+        '''
+        Load existing model from file or create a new one.
+
+        Args:
+            model_class: Model class to instantiate
+            model_path: Path to model file
+
+        Returns:
+            Model object
+        '''
+
+        if os.path.exists(model_path):
+            print(f"Loading existing model from {model_path}")
+            model = model_class().to(self.config['device'])
+            model.load_state_dict(torch.load(model_path))
+            return model
+        else:
+            print(f"No existing model found at {model_path}, creating new model")
+            model = model_class().to(self.config['device'])
+            # Create directory if it doesn't exist
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            # Save initial model
+            torch.save(model.state_dict(), model_path)
+            return model
     
-    for game_index in range(config['self_play_games']):
+    def setup(self):
+        '''
+        Pre-run setup for Chess PPO.
+        '''
+        # create directories if they don't exist
+        setup_games_directory(self.config['games_dir'])
+        setup_metrics_directory(self.config['metrics_dir'])
+    
+    def run(self) -> None:
         try:
-            # Progress reporting
-            if game_index % 10 == 0:
-                progress = (game_index) / config['self_play_games'] * 100
-                print(f"\nGame {game_index}/{config['self_play_games']} ({progress:.1f}% complete)")
-                if training_metrics.win_rates:
-                    print(f"Current win rate: {training_metrics.win_rates[-1]:.2f}")
-                    print(f"Games played: {sum(training_metrics.win_draw_loss)}")
+            # setup the app
+            self.setup()
 
+            # print pre-training information
+            print("\nStarting training process...")
+            print(f"Total games to play: {self.config['self_play_games']}")
+            print(f"Start time: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            
+            # trains the agent in the environment
+            self.training_loop()
+            
+            # print post-training information
+            end_time = datetime.now()
+            total_runtime = end_time - self.start_time
+            print(f"\nTraining completed!")
+            print(f"Total runtime: {total_runtime}")
+            print(f"Average games per second: {self.config['self_play_games'] / total_runtime.total_seconds():.2f}")
+            
+            # evaluate the agent performance during training session
+            # TODO: review this
+            self.final_evaluation()
+            # self.final_evaluation(
+            #     self.training_metrics,
+            #     self.config['plot_metrics'],
+            #     self.config['metrics_smoothing'],
+            #     self.config['metrics_dir']
+            # )
+
+            # save the agent models for future use
+            torch.save(self.policy_net.state_dict(), self.config['save_model_path'])
+            torch.save(self.value_net.state_dict(), self.config['save_model_path'].replace('checkpoint', 'value'))
+            print(f"Models saved to {self.config['save_model_path']}")
+                
+        except Exception as e:
+            end_time = datetime.now()
+            logging.error(f"Fatal error in main after {end_time - self.start_time}: {str(e)}")
+            logging.error(traceback.format_exc())
+            raise
+
+    def training_loop(self) -> None:
+        print("\nStarting training games...")
+        last_progress_time = datetime.now()  # Track time between progress reports
+        
+        # play the games
+        for game_index in range(0, self.config['self_play_games']):
             # Game initialization
-            if config['print_self_play']:
+            if self.config['print_self_play']:
                 print(f"\nStarting game {game_index + 1}")
             
-            # Reset environment
-            obs = env.reset()
-            done = False
-            episode_reward = 0
-            states, actions, rewards, values, log_probs = [], [], [], [], []
+            try:
+                # print progress readout every 25 games
+                if game_index % 25 == 0:
+                    self.training_readout(game_index, last_progress_time)
 
-            # Play single game
-            while not done and len(actions) < config['max_moves']:
-                state = encode_fen(env.board.fen())
+                # play a game of chess, one from the total number of games
+                total_game_rewards, num_actions = self.game_loop()
+
+                # Save game and update metrics
+                # TODO: review this
+                material_score = self.env.calculate_reward()[0]
+                result = self.env.board.result() if self.env.board.is_game_over() else "*"
+                self.training_metrics.update(total_game_rewards, num_actions, material_score, result)
                 
+                # save game to a pgn file
+                save_game(self.env.board, result, game_index)
+                logging.info(f"Game {game_index} completed successfully")
+                
+            except Exception as e:
+                logging.error(f"Error in game {game_index}: {str(e)}")
+                logging.error(traceback.format_exc())
+                continue
+
+    def final_evaluation(self) -> None:
+        # Final evaluation and plotting only if games were completed
+        if sum(self.training_metrics.win_draw_loss) > 0:
+            if self.config.plot_metrics:
+                plot_training_progress(self.training_metrics, self.config.metrics_smoothing)
+                metrics_file = self.training_metrics.save_metrics(self.config.metrics_dir)
+                
+                print("\nTraining Summary:")
+                print(f"Total games completed: {sum(self.training_metrics.win_draw_loss)}")
+                print(f"Wins: {self.training_metrics.win_draw_loss[0]}")
+                print(f"Draws: {self.training_metrics.win_draw_loss[1]}")
+                print(f"Losses: {self.training_metrics.win_draw_loss[2]}")
+                print(f"\nDetailed metrics saved to: {metrics_file}")
+        else:
+            print("\nNo games completed successfully - no metrics to plot")
+
+    def game_loop(self) -> tuple:
+        '''
+        Play a single game of chess using PPO with real-time learning.
+
+        The game alternates between white and black moves. For each move:
+        1. Current board state is encoded to tensor format
+        2. Policy network selects a move (validated by chess engine)
+        3. Value network estimates state value
+        4. Move is executed and reward calculated
+        5. PPO update is performed immediately after each move:
+            - Calculates advantages and returns
+            - Updates policy and value networks using clipped PPO loss
+            - Applies gradient clipping for stability
+        6. Game continues until checkmate, stalemate, or max moves reached
+        
+        Returns:
+            - episode_reward (float): Total accumulated reward for the game
+            - num_actions (int): Number of moves made in the game
+        Notes:
+             - Each move triggers a PPO update (online learning)
+             - Moves are validated by chess engine before execution
+             - Temperature scaling applied to logits for exploration
+             - Includes safety checks for numerical stability
+             - Max moves limit prevents infinite games
+        '''
+        # Reset environment
+        obs = self.env.reset()
+        episode_reward = 0 # tracking the reward for the overall episode
+        states, actions, rewards, values, log_probs = [], [], [], [], [] # initialize lists for trajectory storage
+
+        while not obs['done'] and len(actions) < self.config['max_moves']:
+            try:
+                # 1. State Processing - get and encode the state for the policy network
+                state = encode_fen(obs['fen']) # creates a flattened 12x8x8 tensor (768 values)
+                state_tensor = state.unsqueeze(0) # Add batch dimension: [1, 768]
+
+                # TODO: add additional state information, for example piece positions, material scores
+                # state = {
+                #     'fen': obs['fen'],
+                # }
+                
+                # 2. Move Selection - get move and log probability with the policy network
                 with torch.no_grad():
-                    move = choose_move(env, policy_net)
-                    if move is None:
+                    # illegal moves are filtered out by the chess engine
+                    moves = self.env.get_legal_moves()
+                    if not moves:
                         break
+
+                    # select move and get a value estimate
+                    move = choose_move(
+                        moves, # list of legal moves
+                        self.policy_net, # policy network for move selection
+                        self.env.board.fen(), # current board state as FEN string
+                        self.config['temperature'] # temperature scaling for exploration
+                    )
+                    value = self.value_net(state_tensor)
+
+                    # Get action probability distribution
+                    action_logits = self.policy_net(state_tensor)
+                    action_logits = action_logits / self.config['temperature']
+                    probs = nn.Softmax(dim=1)(action_logits)
                     
-                    state_tensor = state.unsqueeze(0)
-                    value = value_net(state_tensor)
-                    logits = policy_net(state_tensor)
+                    # Get move index and log probability
                     action_idx = move.from_square * 64 + move.to_square
-                    
-                    states.append(state)
-                    actions.append(action_idx)
-                    values.append(value.item())
-                    log_prob = nn.LogSoftmax(dim=1)(logits)[0][action_idx]
-                    log_probs.append(log_prob.item())
-                    
-                    obs, reward, done = env.step(move)
-                    rewards.append(reward)
-                    episode_reward += reward
+                    action_log_prob = torch.log(probs[0][action_idx] + self.config['epsilon_clip'])  # Add small epsilon for numerical stability
 
-            # Prepare trajectory data
-            trajectory = {
-                'states': torch.stack(states),
-                'actions': torch.tensor(actions),
-                'rewards': torch.tensor(rewards),
-                'values': torch.tensor(values),
-                'log_probs': torch.tensor(log_probs),
-                'episode_reward': episode_reward
-            }
+                    # somewhere in here, need to evaluate the move to provide the reward
+                    # integrate evaluation like this:
+                    # https://blog.propelauth.com/chess-analysis-in-python/
+                    
+                # 3. Execute Move - apply the chosen move to the environment to collect the reward    
+                obs, reward = self.env.step(move)
+                episode_reward += reward # track overall episode rewards
+                
+                # 4. Prepare PPO Update Data
+                step_rewards = torch.tensor([reward], dtype=torch.float32).reshape(1, 1)  # Shape: [1,1]
 
-            # PPO Training
-            returns = []
-            R = 0
-            for r in reversed(rewards):
-                R = r + config['gamma'] * R
-                returns.insert(0, R)
-            returns = torch.tensor(returns, dtype=torch.float32)
-            
-            if len(returns) > 1:
-                returns = (returns - returns.mean()) / (returns.std() + 1e-8)
-            
-            for _ in range(config['k_epochs']):
-                try:
+                # 5. PPO Update - calculate policy and value losses and update networks
+                for _ in range(self.config['k_epochs']):
                     # Forward pass
-                    logits = policy_net(trajectory['states'])
-                    logits = logits / 10.0  # Temperature scaling
+                    logits = self.policy_net(state_tensor)
+                    logits = logits / self.config['temperature']
                     logits = torch.nan_to_num(logits, nan=0.0, posinf=1e6, neginf=-1e6)
-                    
-                    if torch.isnan(logits).any():
-                        logging.error("NaN values detected in logits")
-                        continue
-                    
                     logits = logits - logits.logsumexp(dim=-1, keepdim=True)
+                    
                     probs = torch.softmax(logits, dim=-1)
                     
-                    if not torch.isnan(probs).any() and not torch.isinf(probs).any():
-                        dist = torch.distributions.Categorical(probs=probs)
-                    else:
-                        logging.error("Invalid probabilities detected")
-                        continue
+                    if torch.isnan(probs).any() and torch.isinf(probs).any():
+                        raise ValueError("Invalid probabilities detected")
                     
-                    # Calculate policy updates
-                    current_log_probs = dist.log_prob(trajectory['actions'])
-                    current_values = value_net(trajectory['states']).squeeze()
+                    dist = torch.distributions.Categorical(probs=probs)
                     
-                    ratios = torch.exp(current_log_probs - trajectory['log_probs'])
-                    ratios = torch.clamp(ratios, 0.0, 10.0)
+                    # Calculate PPO objectives
+                    current_log_prob = dist.log_prob(torch.tensor(action_idx))
+                    current_value = self.value_net(state_tensor)
                     
-                    advantages = returns - trajectory['values']
-                    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+                    ratio = torch.clamp(
+                        torch.exp(current_log_prob - action_log_prob),,
+                        0.0,
+                        10.0
+                    ) # ratio represents how much the current policy differs from the old policy
+                    
+                    advantage = step_rewards - value
                     
                     # Calculate losses
-                    surr1 = ratios * advantages
-                    surr2 = torch.clamp(ratios, 1-config['epsilon_clip'], 1+config['epsilon_clip']) * advantages
+                    surr1 = ratio * advantage # surrogate 1, represents the normal policy gradient
+                    surr2 = torch.clamp(
+                        ratio,
+                        1-self.config['epsilon_clip'],
+                        1+self.config['epsilon_clip']
+                    ) * advantage # surrogate 2, represents the clipped policy gradient
+                    # final policy loss used in the PPO update, chooses the min of surr1 and surr2
+                    # choosing the min prevents giant policy updates
                     policy_loss = -torch.min(surr1, surr2).mean()
-                    value_loss = nn.MSELoss()(current_values, returns)
+                    value_loss = nn.MSELoss()(current_value, step_rewards)
                     
-                    # Update networks
+                    # Update networks if losses are valid
                     if not torch.isnan(policy_loss) and not torch.isnan(value_loss):
-                        optimizer_p.zero_grad()
+                        # update the policy network
+                        self.optimizer_p.zero_grad()
                         policy_loss.backward()
-                        torch.nn.utils.clip_grad_norm_(policy_net.parameters(), max_norm=0.5)
-                        optimizer_p.step()
+                        torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=0.5)
+                        self.optimizer_p.step()
                         
-                        optimizer_v.zero_grad()
+                        # update the value network
+                        self.optimizer_v.zero_grad()
                         value_loss.backward()
-                        torch.nn.utils.clip_grad_norm_(value_net.parameters(), max_norm=0.5)
-                        optimizer_v.step()
+                        torch.nn.utils.clip_grad_norm_(self.value_net.parameters(), max_norm=0.5)
+                        self.optimizer_v.step()
                         
-                        logging.info(f"Policy Loss: {policy_loss.item():.4f}, Value Loss: {value_loss.item():.4f}")
+                        logging.info(f"Move {len(actions)}: Policy Loss={policy_loss.item():.4f}, Value Loss={value_loss.item():.4f}")
                     else:
-                        logging.error("NaN losses detected")
-                        
-                except Exception as e:
-                    logging.error(f"Error in PPO update: {str(e)}")
-                    logging.error(traceback.format_exc())
-                    continue
-
-            # Save game and update metrics
-            material_score = env.calculate_reward()[0]
-            result = env.board.result() if env.board.is_game_over() else "*"
-            training_metrics.update(episode_reward, len(actions), material_score, result)
+                        if torch.isnan(policy_loss):
+                            raise ValueError("Policy loss is NaN in PPO Update loop")
+                        if torch.isnan(value_loss):
+                            raise ValueError("Value loss is NaN in PPO Update loop")
+                
+                # 6. Store trajectory data for PPO update
+                actions.append(action_idx) # Keep track of moves for max_moves limit
+                states.append(state)
+                rewards.append(reward)
+                values.append(value)
+                log_probs.append(action_log_prob)
             
-            save_game(env.board, result, game_index)
-            logging.info(f"Game {game_index} completed successfully")
-            
-        except Exception as e:
-            logging.error(f"Error in game {game_index}: {str(e)}")
-            logging.error(traceback.format_exc())
-            continue
+            except Exception as e:
+                logging.error(f"Error in game loop: {str(e)}")
+                logging.error(traceback.format_exc())
+                continue
 
-def main():
-    '''
-    Main training loop for Chess PPO.
-    '''
+        return episode_reward, len(actions)
 
-    try:
-        # create directories if they don't exist
-        setup_games_directory(config['games_dir'])
-        setup_metrics_directory(config['metrics_dir'])
+    def training_readout(
+        self,
+        game_index: int,
+        last_progress_time: datetime
+    ):
+        '''
+        Print training progress and metrics.
         
-        # initialize the environment
-        env = ChessEnv(config)
+        Args:
+            game_index: Index of the current game
+            last_progress_time: Time of the last progress report
+        '''
+        current_time = datetime.now()
+        if game_index > 0:  # Skip first iteration
+            time_elapsed = current_time - last_progress_time
+            games_per_second = 25 / time_elapsed.total_seconds()
+            print(f"Time for last 25 games: {time_elapsed.total_seconds():.1f}s ({games_per_second:.2f} games/s)")
+        last_progress_time = current_time
         
-        # TODO: review these
-        # load or create the ppo policy networks
-        policy_net = load_or_create_model(ChessPolicy, config['load_model_path'], config['device'])
-        value_net = load_or_create_model(ChessValue, config['load_model_path'].replace('checkpoint', 'value'), config['device'])
-        
-        optimizer_p = optim.Adam(policy_net.parameters(), lr=config['lr'])
-        optimizer_v = optim.Adam(value_net.parameters(), lr=config['lr'])
-        
-        print("\nStarting training process...")
-        print(f"Total games to play: {config['self_play_games']}")
-        
-        # TODO: review these
-        # Training metrics
-        # initialize a set of training metrics for the training session
-        training_metrics = TrainingMetrics()
-        
-        # run the ppo training loop
-        # trains the agent in the environment
-        training_loop(
-            env,
-            policy_net,
-            value_net,
-            optimizer_p,
-            optimizer_v,
-            training_metrics
-        )
-        
-        # TODO: review this
-        # evaluate the agent performance during training session
-        final_evaluation(
-            training_metrics,
-            config['plot_metrics'],
-            config['metrics_smoothing'],
-            config['metrics_dir']
-        )
-            
-    except Exception as e:
-        logging.error(f"Fatal error in main: {str(e)}")
-        logging.error(traceback.format_exc())
-        raise
+        progress = (game_index) / self.config['self_play_games'] * 100
+        print(f"\nGame {game_index}/{self.config['self_play_games']} ({progress:.1f}% complete)")
+        if self.training_metrics.win_rates:
+            print(f"Current win rate: {self.training_metrics.win_rates[-1]:.2f}")
+            print(f"Games played: {sum(self.training_metrics.win_draw_loss)}")
 
 if __name__ == "__main__":
-    main()
+    # main()
+    app = ChessPPOApp()
+    app.run()
+
