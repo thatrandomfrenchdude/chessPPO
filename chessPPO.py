@@ -148,11 +148,11 @@ class ChessPPOApp:
             
             try:
                 # print progress readout every 25 games
-                if game_index % 25 == 0:
-                    self.training_readout(game_index, last_progress_time)
+                if game_index > 0 and game_index % 25 == 0:
+                    self.training_readout(game_index+1, last_progress_time)
 
                 # play a game of chess, one from the total number of games
-                total_game_rewards, num_actions = self.game_loop()
+                total_game_rewards, num_actions = self.game_loop(game_index + 1)
 
                 # Save game and update metrics
                 # TODO: review this
@@ -162,19 +162,21 @@ class ChessPPOApp:
                 
                 # save game to a pgn file
                 save_game(self.env.board, result, game_index)
-                logging.info(f"Game {game_index} completed successfully")
                 
             except Exception as e:
                 logging.error(f"Error in game {game_index}: {str(e)}")
                 logging.error(traceback.format_exc())
                 continue
 
+            if self.config['print_self_play']:
+                print(f"Game {game_index+1} completed successfully")
+
     def final_evaluation(self) -> None:
         # Final evaluation and plotting only if games were completed
         if sum(self.training_metrics.win_draw_loss) > 0:
-            if self.config.plot_metrics:
-                plot_training_progress(self.training_metrics, self.config.metrics_smoothing)
-                metrics_file = self.training_metrics.save_metrics(self.config.metrics_dir)
+            if self.config['plot_metrics']:
+                plot_training_progress(self.training_metrics, self.config['metrics_smoothing'], self.config['metrics_dir'])
+                metrics_file = self.training_metrics.save_metrics(self.config['metrics_dir'])
                 
                 print("\nTraining Summary:")
                 print(f"Total games completed: {sum(self.training_metrics.win_draw_loss)}")
@@ -185,7 +187,10 @@ class ChessPPOApp:
         else:
             print("\nNo games completed successfully - no metrics to plot")
 
-    def game_loop(self) -> tuple:
+    def game_loop(
+        self,
+        game_index: int
+    ) -> tuple:
         '''
         Play a single game of chess using PPO with real-time learning.
 
@@ -201,7 +206,7 @@ class ChessPPOApp:
         6. Game continues until checkmate, stalemate, or max moves reached
         
         Returns:
-            - episode_reward (float): Total accumulated reward for the game
+            - total_episode_reward (float): Total accumulated reward for the game
             - num_actions (int): Number of moves made in the game
         Notes:
              - Each move triggers a PPO update (online learning)
@@ -211,11 +216,13 @@ class ChessPPOApp:
              - Max moves limit prevents infinite games
         '''
         # Reset environment
-        obs = self.env.reset()
-        episode_reward = 0 # tracking the reward for the overall episode
+        obs, done = self.env.reset()
+        total_episode_reward = 0 # tracking the reward for the overall episode
         states, actions, rewards, values, log_probs = [], [], [], [], [] # initialize lists for trajectory storage
 
-        while not obs['done'] and len(actions) < self.config['max_moves']:
+        move_count = 1
+        while not done and len(actions) < self.config['max_moves']:
+            logging.info(f"\nMove {move_count + 1}")
             try:
                 # 1. State Processing - get and encode the state for the policy network
                 state = encode_fen(obs['fen']) # creates a flattened 12x8x8 tensor (768 values)
@@ -256,8 +263,21 @@ class ChessPPOApp:
                     # https://blog.propelauth.com/chess-analysis-in-python/
                     
                 # 3. Execute Move - apply the chosen move to the environment to collect the reward    
-                obs, reward = self.env.step(move)
-                episode_reward += reward # track overall episode rewards
+                obs, reward, done = self.env.step(move)
+
+                try:
+                    total_episode_reward += reward # track overall episode rewards
+                except Exception as e:
+                    print(reward)
+                    sys.exit(f"Error in reward calculation: {str(e)}")
+
+
+                # Store trajectory data for PPO update
+                actions.append(action_idx) # Keep track of moves for max_moves limit
+                states.append(state)
+                rewards.append(reward)
+                values.append(value)
+                log_probs.append(action_log_prob)
                 
                 # 4. Prepare PPO Update Data
                 step_rewards = torch.tensor([reward], dtype=torch.float32).reshape(1, 1)  # Shape: [1,1]
@@ -289,16 +309,19 @@ class ChessPPOApp:
                     
                     advantage = step_rewards - value
                     
-                    # Calculate losses
-                    surr1 = ratio * advantage # surrogate 1, represents the normal policy gradient
-                    surr2 = torch.clamp(
+                    # Calculate losses in the networks
+                    ## Step 1: Policy Loss
+                    ### Strategy: use surrogates to catch large policy updates
+                    surrogate_1 = ratio * advantage # unbounded policy gradient
+                    surrogate_2 = torch.clamp(
                         ratio,
                         1-self.config['epsilon_clip'],
                         1+self.config['epsilon_clip']
-                    ) * advantage # surrogate 2, represents the clipped policy gradient
-                    # final policy loss used in the PPO update, chooses the min of surr1 and surr2
-                    # choosing the min prevents giant policy updates
-                    policy_loss = -torch.min(surr1, surr2).mean()
+                    ) * advantage # unbounded (clipped) policy gradient
+                    # final policy is min of surrogate_1 and surrogate_2
+                    policy_loss = -torch.min(surrogate_1, surrogate_2).mean()
+
+                    ## Step 2: Value Loss
                     value_loss = nn.MSELoss()(current_value, step_rewards)
                     
                     # Update networks if losses are valid
@@ -321,20 +344,17 @@ class ChessPPOApp:
                             raise ValueError("Policy loss is NaN in PPO Update loop")
                         if torch.isnan(value_loss):
                             raise ValueError("Value loss is NaN in PPO Update loop")
-                
-                # 6. Store trajectory data for PPO update
-                actions.append(action_idx) # Keep track of moves for max_moves limit
-                states.append(state)
-                rewards.append(reward)
-                values.append(value)
-                log_probs.append(action_log_prob)
+                        
+                move_count += 1
+                logging.info(f"Completed move {move_count}. Total moves: {len(actions)}")
             
             except Exception as e:
                 logging.error(f"Error in game loop: {str(e)}")
                 logging.error(traceback.format_exc())
-                continue
+                sys.exit("Error in game loop")
 
-        return episode_reward, len(actions)
+        print(f"Game {game_index} ended after {move_count} moves. Final reward: {total_episode_reward}")
+        return total_episode_reward, len(actions)
 
     def training_readout(
         self,

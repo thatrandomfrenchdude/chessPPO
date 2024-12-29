@@ -15,32 +15,45 @@ class ChessEnv:
         return sum(1 for _ in self.board.piece_map())
 
     def reset(self):
+        '''
+        Reset the environment to a new game.
+        
+        Returns:
+            observation: Initial observation of the environment
+            done: Boolean indicating if the game is over
+        '''
         self.board.reset()
+
         if self.config['print_self_play']:
             print("\n" + "="*50)
             print("Environment reset: new chess board set up.")
             print("\nInitial board position:")
             print(self.board)
             print("="*50 + "\n")
-        # else:
-        #     print("Environment reset: new chess board set up.")
-        return self.get_observation()
+        
+        return self.get_observation(), False
 
+    # TODO: update step to provide done in env observations
     def step(self, move):
+
         if self.config['print_self_play']:
             print("\n" + "="*50)
             print(f"Current board position:")
             print(self.board)
             print(f"\nExecuting move: {move}")
-            self.board.push(move)
+        
+        self.board.push(move)
+
+        if self.config['print_self_play']:
             print("\nBoard after move:")
             print(self.board)
             print("="*50 + "\n")
-        else:
-            self.board.push(move)
+        
         reward, done = self.calculate_reward()
+        
         if self.config['print_self_play']:
-            print(f"Reward: {reward}, Done: {done}")
+            print(f"Reward: {reward}")
+        
         return self.get_observation(), reward, done
 
     def get_legal_moves(self):
@@ -52,11 +65,12 @@ class ChessEnv:
         # Simple serialization of board (could be improved)
         obs = {
             'fen': self.board.fen(),
-            'done': self.board.is_game_over(),
+            # 'done': self.board.is_game_over(),
         }
         return obs
 
     def calculate_reward(self):
+        done = False
         piece_values = {'P': 1, 'N': 3, 'B': 3, 'R': 5, 'Q': 9, 'K': 0}
         position_values = {
             'P': [  # Pawn position values
@@ -122,13 +136,14 @@ class ChessEnv:
         }
         
         if self.board.is_game_over():
+            done = True
             result = self.board.result()
             if result == "1-0":
-                return 10.0, True
+                return 10.0, done
             elif result == "0-1":
-                return -10.0, True
+                return -10.0, done
             else:
-                return 0.0, True
+                return 0.0, done
         
         # Track piece captures
         current_pieces = self.count_pieces()
@@ -172,7 +187,7 @@ class ChessEnv:
             0.2 * capture_reward
         )
         
-        return total_score, False
+        return float(total_score), done
 
 
 def save_game(board, result, game_index):
