@@ -282,7 +282,7 @@ class ChessPPOApp:
                     current_value = self.value_net(state_tensor)
                     
                     ratio = torch.clamp(
-                        torch.exp(current_log_prob - action_log_prob),,
+                        torch.exp(current_log_prob - action_log_prob),
                         0.0,
                         10.0
                     ) # ratio represents how much the current policy differs from the old policy
