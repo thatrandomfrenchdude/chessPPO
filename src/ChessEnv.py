@@ -1,7 +1,6 @@
 import chess
 import chess.pgn
 from datetime import datetime
-import os
 import torch
 
 class ChessEnv:
@@ -176,6 +175,9 @@ class ChessEnv:
         }
         return obs
     
+    # TODO: update this function to consider the difference
+    # between the current board and the previous board instead
+    # of just the current board
     def calculate_reward(self) -> tuple[list[float],bool]:
         done = False
         
@@ -201,6 +203,9 @@ class ChessEnv:
         # Game win/loss/draw score
         game_over_score, done = self._normalized_game_over_reward()
 
+        # Number of moves made score
+        move_count_score = self._normalized_move_count_score()
+
         # DISABLED - Calculate game phase weights
         # TODO: experiment with game phase windows
         # TODO: keep or no?
@@ -209,12 +214,13 @@ class ChessEnv:
         # late_game = self._game_phase_weights()
 
         # Custom ratios
-        material_score_ratio = 1.0 # 0.7 # 0.5
-        position_score_ratio = 0.8 # 0.6 # 0.5
-        game_over_score_ratio = 2.0 # 0.8 # 1.0
-        mobility_score_ratio = 0.3 # 0.5 # 0.5
-        pawn_structure_score_ratio = 0.2 # 0.5 # 0.5
-        center_control_score_ratio = 0.2 # 0.5 # 0.5
+        material_score_ratio = 0.8 # 1.0
+        position_score_ratio = 0.6 # 0.8
+        game_over_score_ratio = 1.0 # 0.8
+        mobility_score_ratio = 0.0 # 0.3
+        pawn_structure_score_ratio = 0.0 # 0.2
+        center_control_score_ratio = 0.0 # 0.2
+        move_count_score_ratio = 0.0 # 0.2
 
         # Combined reward calculation with both phase scaling and custom ratios
         total_score = sum(
@@ -224,25 +230,15 @@ class ChessEnv:
                 game_over_score_ratio * game_over_score, # * late_game,
                 mobility_score_ratio * mobility_score, # * mid_game,
                 pawn_structure_score_ratio * pawn_structure_score, # * mid_game,
-                center_control_score_ratio * center_control_score # * early_game
+                center_control_score_ratio * center_control_score, # * early_game
+                move_count_score_ratio * move_count_score
             ]
         )
 
-        # scores = [
-        #     float(self.enable_material_score * material_score_ratio * mid_game * material_score),
-        #     float(self.enable_position_score * position_score_ratio * early_game * position_score),
-        #     float(self.enable_game_over_score * game_over_score_ratio * late_game * game_over_score),
-        #     float(self.enable_mobility_score * mobility_score_ratio * mid_game * mobility_score),
-        #     float(self.enable_pawn_structure_score * pawn_structure_score_ratio * mid_game * pawn_structure_score),
-        #     float(self.enable_center_control_score * center_control_score_ratio * early_game * center_control_score)
-        # ]
-
-        # # check the turn and invert the score if it is not white's turn
-        # if not self.board.turn:
-        #     total_score = -total_score
+        # TODO: why are scores getting so large?
+        # total reward
         
         return float(total_score), done
-        # return scores, done
     
     def _normalized_game_over_reward(self):
         '''
@@ -257,18 +253,21 @@ class ChessEnv:
         if self.board.is_game_over():
             done = True
             result = self.board.result()
+            color = self.board.turn
 
             # white wins
             if result == "1-0":
-                score = 1.0 # white wins
+                score = 1.0 if color else -1.0
             elif result == "0-1":
-                score = -1.0 # black wins
+                score = -1.0 if color else 1.0
             else:
                 score = 0.0 # draw, still get points to encourage faster games
             
             # invert the score if it is not white's turn
-            if not self.board.turn:
-                score = -score
+            # if not self.board.turn:
+            #     score = -score
+
+            assert -1.0 <= score <= 1.0, f"Game over score out of bounds: {score}"
 
             return score, done
 
@@ -296,6 +295,8 @@ class ChessEnv:
         # normalize the material score
         material_score = material_score / 39.0
 
+        assert -1.0 <= material_score <= 1.0, f"Material score out of bounds: {material_score}"
+
         return material_score
     
     def _normalized_position_score(self):
@@ -322,6 +323,8 @@ class ChessEnv:
 
         # normalize the position score
         position_score = position_score / 39.0
+
+        assert -1.0 <= position_score <= 1.0, f"Position score out of bounds: {position_score}"
 
         return position_score
     
@@ -357,6 +360,8 @@ class ChessEnv:
         # calculate the normalized mobility score
         mobility_score = (legal_moves - legal_moves_opponent) / (legal_moves + legal_moves_opponent)
 
+        assert -1.0 <= mobility_score <= 1.0, f"Mobility score out of bounds: {mobility_score}"
+
         return mobility_score
     
     # TODO: rough implementation, not yet used in reward calculation
@@ -388,6 +393,8 @@ class ChessEnv:
         # calculate the normalized pawn structure score
         pawn_structure_score = (doubled_pawns + isolated_pawns + connected_pawns) / 24.0
 
+        assert -1.0 <= pawn_structure_score <= 1.0, f"Pawn structure score out of bounds: {pawn_structure_score}"
+
         return pawn_structure_score
     
     # TODO: rough implementation, not yet used in reward calculation
@@ -415,7 +422,27 @@ class ChessEnv:
             if self.board.is_attacked_by(not self.board.turn, square):
                 center_score -= 0.5
                 
-        return center_score / 6.0  # Normalize score
+        center_score = center_score / 8  # Normalize score
+        
+        assert -1.0 <= center_score <= 1.0, f"Center control score out of bounds: {center_score}"
+        
+        return center_score
+    
+    def _normalized_move_count_score(self):
+        '''
+        Calculate the move count score of the board.
+        
+        Returns:
+            move_count_score: Normalized move count score of the board
+        '''
+        # scale the value to provide 1 for 0 moves and 0 by config max moves
+        max_moves = self.config.get('max_moves', 100)
+        move_count = len(self.board.move_stack)
+        move_count_score = 1 - move_count / max_moves
+        
+        assert 0.0 <= move_count_score <= 1.0, f"Move count score out of bounds: {move_count_score}"
+        
+        return move_count_score
     
     # TODO: modify the window sizes for the game phases
     # not yet used in reward calculation

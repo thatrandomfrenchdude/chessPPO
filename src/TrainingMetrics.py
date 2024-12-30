@@ -9,7 +9,7 @@ import os
 def plot_training_progress(
     metrics,
     metrics_smoothing,
-    save_path='graph.png'
+    save_path='tgraph.png'
 ):
     '''
     Plot training progress using metrics data.

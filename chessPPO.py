@@ -178,7 +178,7 @@ class ChessPPOApp:
         # Final evaluation and plotting only if games were completed
         if sum(self.training_metrics.win_draw_loss) > 0:
             if self.config['plot_metrics']:
-                plot_training_progress(self.training_metrics, self.config['metrics_smoothing'], self.config['metrics_dir'])
+                plot_training_progress(self.training_metrics, self.config['metrics_smoothing'])
                 metrics_file = self.training_metrics.save_metrics(self.config['metrics_dir'])
                 
                 print("\nTraining Summary:")
