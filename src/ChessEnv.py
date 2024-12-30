@@ -83,14 +83,6 @@ class ChessEnv:
         self.board = chess.Board()
         self.config = config
 
-        # enable reward modifiers
-        self.enable_material_score = config.get('enable_material_score', 1.0)
-        self.enable_position_score = config.get('enable_position_score', 1.0)
-        self.enable_mobility_score = config.get('enable_mobility_score', 1.0)
-        self.enable_pawn_structure_score = config.get('enable_pawn_structure_score', 1.0)
-        self.enable_center_control_score = config.get('enable_center_control_score', 1.0)
-        self.enable_game_over_score = config.get('enable_game_over_score', 1.0)
-
         # self.last_piece_count = self.count_pieces()
         print("Initialized ChessEnv with a fresh board.")
 
@@ -209,28 +201,31 @@ class ChessEnv:
         # Game win/loss/draw score
         game_over_score, done = self._normalized_game_over_reward()
 
-        # Calculate game phase weights
-        early_game, \
-        mid_game, \
-        late_game = self._game_phase_weights()
+        # DISABLED - Calculate game phase weights
+        # TODO: experiment with game phase windows
+        # TODO: keep or no?
+        # early_game, \
+        # mid_game, \
+        # late_game = self._game_phase_weights()
 
         # Custom ratios
         material_score_ratio = 1.0 # 0.7 # 0.5
-        position_score_ratio = 1.0 # 0.6 # 0.5
-        game_over_score_ratio = 1.0 # 0.8 # 1.0
-        mobility_score_ratio = 1.0 # 0.5
-        pawn_structure_score_ratio = 1.0 # 0.5
-        center_control_score_ratio = 1.0 # 0.5
+        position_score_ratio = 0.8 # 0.6 # 0.5
+        game_over_score_ratio = 2.0 # 0.8 # 1.0
+        mobility_score_ratio = 0.3 # 0.5 # 0.5
+        pawn_structure_score_ratio = 0.2 # 0.5 # 0.5
+        center_control_score_ratio = 0.2 # 0.5 # 0.5
 
         # Combined reward calculation with both phase scaling and custom ratios
-        # TODO: need to better relate these -- I am consider implementing a third network to learn these optimized weights
-        total_score = (
-            self.enable_material_score * material_score_ratio * mid_game * material_score +
-            self.enable_position_score * position_score_ratio * early_game * position_score +
-            self.enable_game_over_score * game_over_score_ratio * late_game * game_over_score +
-            self.enable_mobility_score * mobility_score_ratio * mid_game * mobility_score +
-            self.enable_pawn_structure_score * pawn_structure_score_ratio * mid_game * pawn_structure_score +
-            self.enable_center_control_score * center_control_score_ratio * early_game * center_control_score
+        total_score = sum(
+            [
+                material_score_ratio * material_score, # * mid_game,
+                position_score_ratio * position_score, # * early_game,
+                game_over_score_ratio * game_over_score, # * late_game,
+                mobility_score_ratio * mobility_score, # * mid_game,
+                pawn_structure_score_ratio * pawn_structure_score, # * mid_game,
+                center_control_score_ratio * center_control_score # * early_game
+            ]
         )
 
         # scores = [
@@ -422,7 +417,24 @@ class ChessEnv:
                 
         return center_score / 6.0  # Normalize score
     
+    # TODO: modify the window sizes for the game phases
+    # not yet used in reward calculation
     def _game_phase_weights(self):
+        '''
+        Calculate the game phase weights based on the move count.
+
+        The weights are calculated as follows:
+        - Early game: 1 - move_count/30
+        - Mid game: 1 - early_game - late_game
+        - Late game: (move_count-20)/20
+
+        The weights are clamped between 0 and 1.
+
+        Returns:
+            early_game: Weight for the early game
+            mid_game: Weight for the mid game
+            late_game: Weight for the late game
+        '''
         move_count = len(self.board.move_stack)
 
         early_game = max(0, 1 - move_count/30)
