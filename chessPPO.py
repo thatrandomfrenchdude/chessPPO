@@ -9,8 +9,8 @@ import traceback
 import yaml
 from pathlib import Path
 
-from src.ChessEnv import ChessEnv, save_game, setup_games_directory, setup_metrics_directory
-from src.PPOModels import ChessPolicy, ChessValue, encode_fen, choose_move
+from src.ChessEnv import ChessEnv, encode_state
+from src.PPOModels import ChessPolicy, ChessValue, choose_move
 from src.TrainingMetrics import TrainingMetrics, plot_training_progress
 
 logging.basicConfig(
@@ -29,7 +29,6 @@ class ChessPPOApp:
         self.config = self.load_config()
 
         # load or create the ppo policy networks
-        print(self.config)
         self.policy_net = self.load_or_create_model(ChessPolicy, self.config['load_model_path'])
         self.value_net = self.load_or_create_model(ChessValue, self.config['load_model_path'].replace('checkpoint', 'value'))
 
@@ -92,8 +91,12 @@ class ChessPPOApp:
         Pre-run setup for Chess PPO.
         '''
         # create directories if they don't exist
-        setup_games_directory(self.config['games_dir'])
-        setup_metrics_directory(self.config['metrics_dir'])
+        if not os.path.exists(self.config['games_dir']):
+            os.makedirs(self.config['games_dir'])
+        # setup_games_directory(self.config['games_dir'])
+        if not os.path.exists(self.config['metrics_dir']):
+            os.makedirs(self.config['metrics_dir'])
+        # setup_metrics_directory(self.config['metrics_dir'])
     
     def run(self) -> None:
         try:
@@ -155,13 +158,13 @@ class ChessPPOApp:
                 total_game_rewards, num_actions = self.game_loop(game_index + 1)
 
                 # Save game and update metrics
-                # TODO: review this
+                # TODO: this is not working
                 material_score = self.env.calculate_reward()[0]
                 result = self.env.board.result() if self.env.board.is_game_over() else "*"
                 self.training_metrics.update(total_game_rewards, num_actions, material_score, result)
                 
                 # save game to a pgn file
-                save_game(self.env.board, result, game_index)
+                self.env.save_game(result, game_index)
                 
             except Exception as e:
                 logging.error(f"Error in game {game_index}: {str(e)}")
@@ -225,7 +228,7 @@ class ChessPPOApp:
             logging.info(f"\nMove {move_count + 1}")
             try:
                 # 1. State Processing - get and encode the state for the policy network
-                state = encode_fen(obs['fen']) # creates a flattened 12x8x8 tensor (768 values)
+                state = encode_state(obs['fen']) # creates a flattened 12x8x8 tensor (768 values)
                 state_tensor = state.unsqueeze(0) # Add batch dimension: [1, 768]
 
                 # TODO: add additional state information, for example piece positions, material scores
@@ -244,7 +247,7 @@ class ChessPPOApp:
                     move = choose_move(
                         moves, # list of legal moves
                         self.policy_net, # policy network for move selection
-                        self.env.board.fen(), # current board state as FEN string
+                        state, # state tensor for the current board position
                         self.config['temperature'] # temperature scaling for exploration
                     )
                     value = self.value_net(state_tensor)
@@ -280,6 +283,14 @@ class ChessPPOApp:
                 log_probs.append(action_log_prob)
                 
                 # 4. Prepare PPO Update Data
+                # reward = [
+                #     float,
+                #     float,
+                #     float,
+                #     float,
+                #     float,
+                #     float
+                # ]
                 step_rewards = torch.tensor([reward], dtype=torch.float32).reshape(1, 1)  # Shape: [1,1]
 
                 # 5. PPO Update - calculate policy and value losses and update networks
@@ -375,8 +386,8 @@ class ChessPPOApp:
             print(f"Time for last 25 games: {time_elapsed.total_seconds():.1f}s ({games_per_second:.2f} games/s)")
         last_progress_time = current_time
         
-        progress = (game_index) / self.config['self_play_games'] * 100
-        print(f"\nGame {game_index}/{self.config['self_play_games']} ({progress:.1f}% complete)")
+        progress = (game_index-1) / self.config['self_play_games'] * 100
+        print(f"\nGame {game_index-1}/{self.config['self_play_games']} ({progress:.1f}% complete)")
         if self.training_metrics.win_rates:
             print(f"Current win rate: {self.training_metrics.win_rates[-1]:.2f}")
             print(f"Games played: {sum(self.training_metrics.win_draw_loss)}")

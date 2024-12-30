@@ -21,3 +21,10 @@ metrics:
   metrics_format: "json"
 agent:
   aggression: 0.0
+environment:
+  enable_material_score: 1.0
+  enable_position_score: 1.0
+  enable_mobility_score: 1.0
+  enable_pawn_structure_score: 1.0
+  enable_center_control_score: 1.0
+  enable_game_over_score: 1.0
