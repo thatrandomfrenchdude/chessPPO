@@ -13,6 +13,12 @@ from src.ChessEnv import ChessEnv, encode_state
 from src.PPOModels import ChessPolicy, ChessValue, choose_move
 from src.TrainingMetrics import TrainingMetrics, plot_training_progress
 
+# references
+# ppo implementation from paper
+# https://www.youtube.com/watch?v=hlv79rcHws0
+# analyze chess positions
+# https://blog.propelauth.com/chess-analysis-in-python/
+
 logging.basicConfig(
     filename=f'logs/chess_ppo_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log',
     level=logging.INFO,
