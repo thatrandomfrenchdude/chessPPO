@@ -4,7 +4,18 @@ import chess
 import chess.pgn
 import torch
 
+# Detailed instructions for the ChessGame module
+# can be found at src/docs/ChessGame/README.md
+
 class ChessGame:
+    PIECE_VALUES = {
+        'P': 100,
+        'N': 300,
+        'B': 300, # Bishops are slightly better than knights, mess with this later
+        'R': 500,
+        'Q': 900,
+        'K': 0 # King value is not used in reward calculation
+    }
     def __init__(
         self,
         max_moves
@@ -95,11 +106,27 @@ class ChessGame:
 
         return position, reward, done
     
-    def calc_position_value(self, position):
+    def calc_position_value(
+        self,
+        position,
+        perspective=chess.WHITE
+    ):
         """
         Calculate the value of a position.
         """
-        raise NotImplementedError
+        white_score = 0
+        black_score = 0
+
+        for square in chess.SQUARES:
+            piece = position.piece_at(square)
+            if piece:
+                if piece.color:
+                    white_score += self.PIECE_VALUES[piece.symbol().upper()]
+                else:
+                    black_score += self.PIECE_VALUES[piece.symbol().upper()]
+
+        differential = white_score - black_score
+        return differential
 
 class ChessEnv:
     PIECE_VALUES = {

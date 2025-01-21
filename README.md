@@ -1,10 +1,37 @@
 # Chess PPO System
 
+## Table of Contents
+1. [First, a Note on the Versions](#first-a-note-on-the-versions)
+2. [System Overview](#system-overview)
+3. [Architecture](#architecture)
+    - [Core Components](#core-components)
+    - [Project Structure](#project-structure)
+4. [Usage](#usage)
+    - [v1](#v1)
+    - [v0](#v0)
+5. [Working Notes](#working-notes)
+
+
+## First, a Note on the Versions
+This is a living project. v0 was an initial exploration of many different ideas and concepts. v1 is a more focused and refined version of the project.
+
+I will continue to update it as I have time with the best intentions to maintain documentation and resources as I go.
+
+That being said, some of this may require you to explore the wilderness of my thought process. Everything is here, but the map may not be immediately clear. Have fun!
+
 ## System Overview
-A reinforcement learning system that uses Proximal Policy Optimization (PPO) to train a chess-playing agent.
+A reinforcement learning system that uses Proximal Policy Optimization (PPO) to train a chess-playing agent. The agent uses self-play to learn.
 
 ## Architecture
-### File Structure
+### Core Components
+- [`ChessGame`](/docs/ChessGame/README.md): Chess environment with reward calculation and game state management
+- [`ChessPPOBot`](/docs/ChessPPOBot/README.md): PPO agent with policy and value networks
+- [`GameMetrics`](/docs/GameMetrics/README.md): Game statistics tracking
+- [`TrainingSession`](/docs/TrainingSession/README.md): Training loop with self-play
+
+Click each component for more details.
+
+### Project Structure
 ```
 ChessPPO/
 ├── README.md
@@ -13,7 +40,7 @@ ChessPPO/
 ├── main.py                 # Training script
 ├── config.yaml             # Hyperparameters
 ├── src/
-│   ├── ChessEnv.py         # Chess environment
+│   ├── ChessGame.py        # Chess environment
 │   ├── ChessPPOBot.py      # Neural network models
 │   ├── TrainingSession.py  # Training Session
 │   └── GameMetrics.py      # Game Metrics
@@ -22,60 +49,6 @@ ChessPPO/
 ├── training-metrics/       # JSON metrics
 └── logs/                   # Training logs
 ```
-
-### Core Components
-- `ChessGame`: Chess environment with reward calculation and game state management
-    - Values
-        - `board`: the game environment
-        - `moves`: list of moves that have been played
-    - Functions
-        - `save`: Save the game to a PGN file
-        - `get_postion`: Get the current board as fen string
-        - `get_rewards`: Get the rewards for a move
-        - `get_done`: Check if the game is over
-        - `get_results`: Get the game result
-        - `step`: Play a move, update the game state, and return the new state, reward, and done flag
-        - `calc_position_value`: Calculate the value of the current position
-- `ChessPPOBot`: PPO agent with policy and value networks
-    - Values
-        - `bot_name`
-        - `Actor`: 768 -> 1024 -> 2048 -> 4096
-        - `Critic`: 768 -> 1024 -> 512 -> 256 -> 64 -> 1
-        - `actor_optimizer`
-        - `critic_optimizer`
-    - Functions
-        - `load_or_create_model`: Load an existing model from file or create one if not found
-        - `choose_move`: Choose a move based on the given state using the actor network
-        - `evaluate_move`: Evaluate the chosen move using the critic network
-        - `update`: Update the actor and critic networks
-        - `save_bot`: Save the bot models to files
-- `GameMetrics`: Game statistics tracking
-    - Values
-        - `start`: game start time
-        - `timestamps`: list of timestamps for each step
-        - `start_positions`: starting positions for each step
-        - `actions`: list of moves played at each step
-        - `rewards`: list of rewards for each step
-        - `end_positions`: ending positions for each step
-        - `dones`: list of done flags for each step
-        - `result`: game result
-    - Functions
-        - `save_step`: Save the current game step
-        - `save_result`: Save the game result
-        - `save`: Save the game metrics to a JSON file
-- `TrainingSession`: Training loop with self-play
-    - Values
-        - `bot`: The ChessPPOBot agent
-        - `session_length`: Number of games to play
-        - `save_session`: Save the session to files
-        - `save_models`: Save the bot models to files
-        - `session_dir`: Directory to save the session files
-        - `games_dir`: Directory to save the pgn game files
-        - `metrics_dir`: Directory to save the game metric files
-    - Functions
-        - `run`: Run the training session
-        - `save`: Save the session to files
-        - `plot_session`: Plot the session
 
 ## Usage
 ### v1
@@ -110,7 +83,7 @@ TBD
 - `training_progress.png`: Training visualization
 - `logs/chess_ppo_YYYYMMDD_HHMMSS.log`: Training logs
 
-## Notes
+## Working Notes
 ### Neural Network Details
 Network details are in progress.
 
