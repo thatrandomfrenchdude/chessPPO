@@ -39,8 +39,11 @@ chess-ppo-venv/**
 *
 */
 logs/
+logs/**
 models/
+models/**
 training-metrics/
+training-metrics/**
 
 # Then whitelist specific files and directories
 !README.md
@@ -59,5 +62,3 @@ training-metrics/
 !scripts/*
 !docs/*
 !tests/*
-
-# Whitelist these directories but ignore everything in them
