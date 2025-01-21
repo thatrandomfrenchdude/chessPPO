@@ -19,6 +19,10 @@ I will continue to update it as I have time with the best intentions to maintain
 
 That being said, some of this may require you to explore the wilderness of my thought process. Everything is here, but the map may not be immediately clear. Have fun!
 
+## Version Status
+- **[Active Development]** v1: Not fully functional, still in progress. Reworked the project architecture to more closely follow the PPO algorithm.
+- **[Archived]** v0: Working prototype, doesn't train well. Mostly project layout exploration. This is "archived," all the code is still there. Follow the v0 usage instructions to run it. This will eventually be deprecated.
+
 ## System Overview
 A reinforcement learning system that uses Proximal Policy Optimization (PPO) to train a chess-playing agent. The agent uses self-play to learn.
 
@@ -29,7 +33,7 @@ A reinforcement learning system that uses Proximal Policy Optimization (PPO) to 
 - [`GameMetrics`](/docs/GameMetrics/README.md): Game statistics tracking
 - [`TrainingSession`](/docs/TrainingSession/README.md): Training loop with self-play
 
-Click each component for developer documentation.
+Click each component for v1 developer documentation.
 
 ### Project Structure
 ```
@@ -52,7 +56,19 @@ ChessPPO/
 
 ## Usage
 ### v1
-TBD
+1. Activate or create the virtual environment:
+    ```
+    source chess-ppo-venv/bin/activate
+    ```
+    or
+    ```
+    python3.12 -m venv chess-ppo-venv
+    pip install -r requirements.txt
+    ```
+2. Run training:
+    ```
+    python main.py
+    ```
 
 ### v0
 1. Configure hyperparameters in config dictionary
