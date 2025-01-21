@@ -29,7 +29,7 @@ A reinforcement learning system that uses Proximal Policy Optimization (PPO) to 
 - [`GameMetrics`](/docs/GameMetrics/README.md): Game statistics tracking
 - [`TrainingSession`](/docs/TrainingSession/README.md): Training loop with self-play
 
-Click each component for more details.
+Click each component for developer documentation.
 
 ### Project Structure
 ```
