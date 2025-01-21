@@ -27,7 +27,6 @@ ENV/
 # Specific virtual environment
 chess-ppo-venv/
 chess-ppo-venv/**
-# chess-ppo-venv/lib/python3.12/site-packages/torchgen/
 
 # IDEs and editors
 .idea/
@@ -53,7 +52,7 @@ chess-ppo-venv/**
 !src/GameMetrics.py
 !.gitignore
 
-# keep directories and their contents
-!scripts/
-!docs/
-!tests/
+# Whitelist directories
+!scripts/*
+!docs/*
+!tests/*
