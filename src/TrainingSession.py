@@ -67,6 +67,7 @@ class TrainingSession:
                 # print pre-game readout
 
                 # setup game metrics; one entry per step
+                game_metrics = GameMetrics()
 
                 # get the initial observations
                 start_position = game.get_position()
