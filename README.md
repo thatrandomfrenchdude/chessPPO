@@ -21,8 +21,15 @@ I will continue to update it as I have time with the best intentions to maintain
 That being said, some of this may require you to explore the wilderness of my thought process. Everything is here, but the map may not be immediately clear. Have fun!
 
 ## Version Status
-- **[Active Development]** v1: Not fully functional, still in progress. Reworked the project architecture to more closely follow the PPO algorithm.
-- **[Archived]** v0: Working prototype, doesn't train well. Mostly project layout exploration. This is "archived," all the code is still there. Follow the v0 usage instructions to run it. This will eventually be deprecated.
+### v1
+**Active Development**
+
+Not fully functional, still in progress. Reworked the project architecture to more closely follow the PPO algorithm.
+
+### v0
+**Archived**
+
+Working prototype, doesn't train well. Mostly project layout exploration. This is "archived," all the code is still there. Follow the v0 usage instructions to run it. This will eventually be deprecated.
 
 ## System Overview
 A reinforcement learning system that uses Proximal Policy Optimization (PPO) to train a chess-playing agent. The agent uses self-play to learn.
