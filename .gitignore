@@ -51,8 +51,6 @@ chess-ppo-venv/**
 !src/ChessPPOBot.py
 !src/TrainingSession.py
 !src/GameMetrics.py
-!/docs/
-!/tests/
 !.gitignore
 
 # Keep directories but ignore their contents
@@ -61,11 +59,7 @@ self-play-games/*
 training-metrics/*
 logs/*
 
-# keep the scripts directory and its contents
+# keep directories and their contents
 !scripts/
-
-# Create empty .gitkeep files to track empty directories
-!models/.gitkeep
-!self-play-games/.gitkeep
-!training-metrics/.gitkeep
-!logs/.gitkeep
+!docs/
+!tests/
