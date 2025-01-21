@@ -37,7 +37,7 @@ chess-ppo-venv/**
 
 # First ignore everything
 *
-!*/
+*/
 logs/
 models/
 training-metrics/
