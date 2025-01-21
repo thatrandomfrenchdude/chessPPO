@@ -48,34 +48,6 @@ class TrainingSession:
         self.game_metrics = [GameMetrics() for _ in range(session_length)]
         self.games = [ChessGame() for _ in range(session_length)]
 
-    def save(self):
-        # ensure file dirs exist or are created
-        # training session directories
-        if not os.path.exists(self.session_dir):
-            os.makedirs(self.session_dir)
-        # game directories
-        if not os.path.exists(self.games_dir):
-            os.makedirs(self.games_dir)
-        # metrics directories
-        if not os.path.exists(self.metrics_dir):
-            os.makedirs(self.metrics_dir)
-
-        # save the data to the dirs
-        for i, (game, game_metrics) in enumerate(zip(self.games, self.game_metrics)):
-            # name the game
-            game_name = f"game_{i+1}"
-            
-            # save the game data
-            game.save(
-                f"{self.games_dir}/{game_name}.pgn",
-                game_metrics.start.strftime('%Y-%m-%d'),
-                self.bot.bot_name,
-                game_metrics.result
-            )
-
-            # save the metrics data
-            game_metrics.save(f"{self.metrics_dir}/{game_name}.json")
-
     def run(self):
         """
         Run the training session.
@@ -146,6 +118,34 @@ class TrainingSession:
         # optionally save the session data
         if self.save_session:
             self.save()
+
+    def save(self):
+        # ensure file dirs exist or are created
+        # training session directories
+        if not os.path.exists(self.session_dir):
+            os.makedirs(self.session_dir)
+        # game directories
+        if not os.path.exists(self.games_dir):
+            os.makedirs(self.games_dir)
+        # metrics directories
+        if not os.path.exists(self.metrics_dir):
+            os.makedirs(self.metrics_dir)
+
+        # save the data to the dirs
+        for i, (game, game_metrics) in enumerate(zip(self.games, self.game_metrics)):
+            # name the game
+            game_name = f"game_{i+1}"
+            
+            # save the game data
+            game.save(
+                f"{self.games_dir}/{game_name}.pgn",
+                game_metrics.start.strftime('%Y-%m-%d'),
+                self.bot.bot_name,
+                game_metrics.result
+            )
+
+            # save the metrics data
+            game_metrics.save(f"{self.metrics_dir}/{game_name}.json")
 
     def plot_session(self):
         """

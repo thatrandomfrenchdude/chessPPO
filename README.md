@@ -73,8 +73,8 @@ ChessPPO/
         - `games_dir`: Directory to save the pgn game files
         - `metrics_dir`: Directory to save the game metric files
     - Functions
-        - `save`: Save the session to files
         - `run`: Run the training session
+        - `save`: Save the session to files
         - `plot_session`: Plot the session
 
 ## Usage
