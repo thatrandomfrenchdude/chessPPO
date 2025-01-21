@@ -80,6 +80,7 @@ class ChessPPOBotMain:
             TRAINING_SESSION_DIR,
             TRAINING_SESSIONS_GAMES_DIR,
             TRAINING_SESSIONS_METRICS_DIR,
+            CHESS_GAME_MAX_MOVES
         )
         
         # launch the training session

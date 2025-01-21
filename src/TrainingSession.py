@@ -33,7 +33,8 @@ class TrainingSession:
         save_models: bool,
         session_dir: str,
         games_dir: str,
-        metrics_dir: str
+        metrics_dir: str,
+        chess_game_max_moves: int
     ):
         # training session parameters
         self.bot = bot
@@ -46,7 +47,7 @@ class TrainingSession:
 
         # Training session objects
         self.game_metrics = [GameMetrics() for _ in range(session_length)]
-        self.games = [ChessGame() for _ in range(session_length)]
+        self.games = [ChessGame(chess_game_max_moves) for _ in range(session_length)]
 
     def run(self):
         """
@@ -68,10 +69,11 @@ class TrainingSession:
                 # setup game metrics; one entry per step
 
                 # get the initial observations
-                start_position = game.get_position() # returns a chess board
-                done = False # is the game over?
-                move_count = 0 # how many moves have been made?
+                start_position = game.get_position()
+                done = False
+                move_count = 0
 
+                # loop while the game is not over
                 while not done:
                     # get the bot's action
                     action = self.bot.choose_move(start_position)

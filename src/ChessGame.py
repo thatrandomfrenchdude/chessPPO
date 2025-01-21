@@ -5,12 +5,16 @@ import chess.pgn
 import torch
 
 class ChessGame:
-    def __init__(self):
+    def __init__(
+        self,
+        max_moves
+    ):
         """
         Load a new game of chess
         """
         self.board = chess.Board()
         self.moves = []
+        self.max_moves = max_moves
 
     def save(
         self,
@@ -64,7 +68,8 @@ class ChessGame:
         """
         Check if the game is over.
         """
-        return self.board.is_game_over()
+        return self.board.is_game_over() or \
+            len(self.moves) >= self.max_moves
 
     def get_result(self):
         """
