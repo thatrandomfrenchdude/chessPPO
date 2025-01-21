@@ -53,12 +53,6 @@ chess-ppo-venv/**
 !src/GameMetrics.py
 !.gitignore
 
-# Keep directories but ignore their contents
-!models/*
-!self-play-games/*
-!training-metrics/*
-!logs/*
-
 # keep directories and their contents
 !scripts/
 !docs/
