@@ -60,7 +60,7 @@ class ChessGame:
         """
         Get the configuration of the board.
         """
-        self.board.fen()
+        return self.board.fen()
 
     def get_reward(self, start_position, end_position):
         """
@@ -97,7 +97,8 @@ class ChessGame:
         Take a step in a game of chess.
         """
         # apply the move to the board
-        self.board.push(move)
+        self.board.push_san(move)
+        self.moves.append(move)
 
         # get and return the ppo values
         position = self.get_position()
@@ -108,8 +109,7 @@ class ChessGame:
     
     def calc_position_value(
         self,
-        position,
-        perspective=chess.WHITE
+        position: str
     ):
         """
         Calculate the value of a position.
@@ -117,15 +117,18 @@ class ChessGame:
         white_score = 0
         black_score = 0
 
+        board = chess.Board(position)
         for square in chess.SQUARES:
-            piece = position.piece_at(square)
+            piece = board.piece_at(square)
             if piece:
                 if piece.color:
                     white_score += self.PIECE_VALUES[piece.symbol().upper()]
                 else:
                     black_score += self.PIECE_VALUES[piece.symbol().upper()]
 
-        differential = white_score - black_score
+        perspective = 1 if self.board.turn else -1
+        differential = perspective * (white_score - black_score)
+
         return differential
 
 class ChessEnv:
