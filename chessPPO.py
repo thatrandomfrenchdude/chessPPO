@@ -9,9 +9,9 @@ import traceback
 import yaml
 from pathlib import Path
 
-from src.ChessEnv import ChessEnv, encode_state
-from src.PPOModels import ChessPolicy, ChessValue, choose_move
-from src.TrainingMetrics import TrainingMetrics, plot_training_progress
+from ChessGame import ChessEnv, encode_state
+from ChessPPOBot import ChessPolicy, ChessValue, choose_move
+from TrainingSession import TrainingMetrics, plot_training_progress
 
 # references
 # ppo implementation from paper
@@ -75,7 +75,7 @@ class ChessPPOApp:
             model_path: Path to model file
 
         Returns:
-            Model object
+            Model object 
         '''
 
         if os.path.exists(model_path):
