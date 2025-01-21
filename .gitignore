@@ -45,10 +45,12 @@ chess-ppo-venv/**
 !requirements.txt
 !config.yaml
 !chessPPO.py
+!main.py
 !src/
-!src/ChessEnv.py
-!src/PPOModels.py
-!src/TrainingMetrics.py
+!src/ChessGame.py
+!src/ChessPPOBot.py
+!src/TrainingSession.py
+!src/GameMetrics.py
 !.gitignore
 
 # Keep directories but ignore their contents
