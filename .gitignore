@@ -38,13 +38,6 @@ chess-ppo-venv/**
 # First ignore everything
 *
 */
-logs/
-logs/**
-models/
-models/**
-training-metrics/
-training-metrics/**
-cart-pole/
 
 # Then whitelist specific files and directories
 !README.md
@@ -53,13 +46,11 @@ cart-pole/
 !chessPPO.py
 !main.py
 !src/
-!src/ChessGame.py
-!src/ChessPPOBot.py
-!src/TrainingSession.py
-!src/GameMetrics.py
+!src/**
+!scripts/
+!scripts/**
+!docs/
+!docs/**
+!tests/
+!tests/**
 !.gitignore
-
-# Whitelist directories
-!scripts/*
-!docs/*
-!tests/*
