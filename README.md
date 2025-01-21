@@ -2,14 +2,15 @@
 
 ## Table of Contents
 1. [First, a Note on the Versions](#first-a-note-on-the-versions)
-2. [System Overview](#system-overview)
-3. [Architecture](#architecture)
+2. [Version Status](#version-status)
+3. [System Overview](#system-overview)
+4. [Architecture](#architecture)
     - [Core Components](#core-components)
     - [Project Structure](#project-structure)
-4. [Usage](#usage)
+5. [Usage](#usage)
     - [v1](#v1)
     - [v0](#v0)
-5. [Working Notes](#working-notes)
+6. [Working Notes](#working-notes)
 
 
 ## First, a Note on the Versions
