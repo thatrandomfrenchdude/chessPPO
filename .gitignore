@@ -44,6 +44,7 @@ models/
 models/**
 training-metrics/
 training-metrics/**
+cart-pole/
 
 # Then whitelist specific files and directories
 !README.md
