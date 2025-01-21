@@ -51,6 +51,7 @@ chess-ppo-venv/**
 !src/ChessPPOBot.py
 !src/TrainingSession.py
 !src/GameMetrics.py
+!/docs/*
 !.gitignore
 
 # Keep directories but ignore their contents
