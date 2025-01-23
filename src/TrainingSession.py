@@ -7,8 +7,8 @@ import traceback
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ChessGame import ChessGame
-from GameMetrics import GameMetrics
+from .ChessGame import ChessGame
+from .GameMetrics import GameMetrics
 
 class TrainingSession:
     """
@@ -34,9 +34,10 @@ class TrainingSession:
         session_dir: str,
         games_dir: str,
         metrics_dir: str,
-        chess_game_max_moves: int
+        max_moves: int
     ):
         # training session parameters
+        self.start = datetime.now()
         self.bot = bot
         self.session_length = session_length
         self.save_session = save_session
@@ -46,8 +47,12 @@ class TrainingSession:
         self.metrics_dir = metrics_dir
 
         # Training session objects
-        self.game_metrics = [GameMetrics() for _ in range(session_length)]
-        self.games = [ChessGame(chess_game_max_moves) for _ in range(session_length)]
+        self.game_metrics = [
+            GameMetrics() for _ in range(session_length)
+        ]
+        self.games = [
+            ChessGame(max_moves) for _ in range(session_length)
+        ]
 
     def run(self):
         """
@@ -56,10 +61,10 @@ class TrainingSession:
         Can be parallelized.
         """
         # intial readouts for user
-        print("\nStarting a new training session.")
-        print(f"This session will run for {self.session_length} games.")
-        print(f"Today's date is {self.start.strftime('%Y-%m-%d')}.")
-        print(f"The session start time is {self.start.strftime('%H:%M:%S')}.")
+        logging.info("\nStarting a new training session.")
+        logging.info(f"This session will run for {self.session_length} games.")
+        logging.info(f"Today's date is {self.start.strftime('%Y-%m-%d')}.")
+        logging.info(f"The session start time is {self.start.strftime('%H:%M:%S')}.")
         
         # play the games in the sessions  
         for game, game_metrics in zip(self.games, self.game_metrics):
@@ -77,6 +82,7 @@ class TrainingSession:
                 # loop while the game is not over
                 while not done:
                     # get the bot's action
+                    # TODO: Solve error occuring here
                     action = self.bot.choose_move(start_position)
                     
                     # take the action
@@ -110,9 +116,10 @@ class TrainingSession:
                 traceback.print_exc()
 
         # print post-session readout
-        print("\nTraining session complete.")
-        print(f"The session ended at: {datetime.now().strftime('%H:%M:%S')}")
-        print(f"Session duration: {datetime.now() - self.start}")
+        end = datetime.now()
+        logging.info("\nTraining session complete.")
+        logging.info(f"The session ended at: {end.strftime('%H:%M:%S')}")
+        logging.info(f"Session duration: {end - self.start}")
 
         # optionally save the models after the session
         if self.save_models:
@@ -127,12 +134,15 @@ class TrainingSession:
         # training session directories
         if not os.path.exists(self.session_dir):
             os.makedirs(self.session_dir)
+            logging.info(f"Created session directory: {self.session_dir}")
         # game directories
         if not os.path.exists(self.games_dir):
             os.makedirs(self.games_dir)
+            logging.info(f"Created game directory: {self.games_dir}")
         # metrics directories
         if not os.path.exists(self.metrics_dir):
             os.makedirs(self.metrics_dir)
+            logging.info(f"Created metrics directory: {self.metrics_dir}")
 
         # save the data to the dirs
         for i, (game, game_metrics) in enumerate(zip(self.games, self.game_metrics)):

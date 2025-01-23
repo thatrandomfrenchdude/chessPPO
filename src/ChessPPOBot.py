@@ -62,6 +62,7 @@ class ChessPPOBot:
     """
     def __init__(
         self,
+        device,
         bot_name,
         training,
         policy_model_path,
@@ -69,6 +70,7 @@ class ChessPPOBot:
         value_model_path,
         value_learning_rate
     ):
+        self.device = device
         self.bot_name = bot_name
         # initialize bot models
         """
@@ -116,11 +118,11 @@ class ChessPPOBot:
         if training:
             # initialize optimizers
             self.actor_optimizer = optim.Adam(
-                self.policy_net.parameters(),
+                self.actor.parameters(),
                 lr=policy_learning_rate
             )
             self.critic_optimizer = optim.Adam(
-                self.value_net.parameters(),
+                self.critic.parameters(),
                 lr=value_learning_rate
             )
 
@@ -142,12 +144,12 @@ class ChessPPOBot:
 
         if os.path.exists(model_path):
             print(f"Loading existing model from {model_path}")
-            model = model_class().to(self.config['device'])
+            model = model_class().to(self.device)
             model.load_state_dict(torch.load(model_path))
             return model
         else:
             print(f"No existing model found at {model_path}, creating new model")
-            model = model_class().to(self.config['device'])
+            model = model_class().to(self.device)
             # Create directory if it doesn't exist
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
             # Save initial model
@@ -165,7 +167,57 @@ class ChessPPOBot:
         board state.
         """
         # get the move probabilities
-        move_probs = self.actor.forward(board)
+        # TODO: Fix error here
+        # Likely issue is that the board in v1 is
+        # not in the same format as the board in v0
+        
+        # reformat the board input
+        def encode_state(fen) -> torch.Tensor:
+            '''
+            Create a binary vector representation of the chess position.
+
+            Args:
+                fen: FEN string of the board position
+
+            Returns:
+                board_tensor: Tensor representation of the board
+            '''
+            
+            piece_map = {'P': 0, 'N': 1, 'B': 2, 'R': 3, 'Q': 4, 'K': 5,
+                        'p': 6, 'n': 7, 'b': 8, 'r': 9, 'q': 10, 'k': 11}
+            
+            board_tensor = torch.zeros(12, 8, 8)  # 12 piece types, 8x8 board
+            
+            # Parse the FEN string
+            board_str = fen.split(' ')[0]
+            row, col = 0, 0
+            
+            for char in board_str:
+                if char == '/':
+                    row += 1
+                    col = 0
+                elif char.isdigit():
+                    col += int(char)
+                else:
+                    board_tensor[piece_map[char]][row][col] = 1
+                    col += 1
+                    
+            return board_tensor.flatten().unsqueeze(0)
+
+        # the issue here is as follows:
+        # each position in a game of chess has a different
+        # number of legal moves. The policy model needs to
+        # have a consistent shape for the input
+
+        # TODO: need a function that can take an arbitrary
+        # board state and return a consistent shape 
+        # modeling the outputs of the policy model
+        # TODO idea 1: use a Monte Carlo Tree Search
+        # TODO idea 2: combine 217 and 222?
+        # TODO idea 3: can (a) function(s) do this?
+        move_probs = self.actor.forward(
+            encode_state(board)
+        )
 
         # return the move with the highest probability
         return max(move_probs, key=lambda x: x[1])

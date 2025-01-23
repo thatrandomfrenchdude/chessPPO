@@ -1,8 +1,12 @@
 from datetime import datetime
 import logging
+import sys
 
-from ChessPPOBot import ChessPPOBot
-from TrainingSession import TrainingSession
+import torch
+
+from src.ChessPPOBot import ChessPPOBot
+from src.TrainingSession import TrainingSession
+import traceback
 
 # references
 # ppo implementation from paper
@@ -20,6 +24,7 @@ MODE = "train" # or "play" to play against the bot
 
 #####################
 CHESS_PPO_BOT_NAME = "uno"
+CHESS_PPO_BOT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # policy model
 CHESS_PPO_BOT_POLICY_MODEL_PATH = f"models/{CHESS_PPO_BOT_NAME}_policy.pth"
 CHESS_PPO_BOT_POLICY_LEARNING_RATE = 0.0005
@@ -54,6 +59,7 @@ class ChessPPOBotMain:
     def __init__(self, mode):
         # initialize the bot
         self.bot = ChessPPOBot(
+            device=CHESS_PPO_BOT_DEVICE,
             bot_name=CHESS_PPO_BOT_NAME,
             training=True, # True for self-play training, False for playing against a human
             policy_model_path=CHESS_PPO_BOT_POLICY_MODEL_PATH,
@@ -84,7 +90,7 @@ class ChessPPOBotMain:
         )
         
         # launch the training session
-        self.training_session.run(self.bot)
+        self.training_session.run()
 
     def play(self):
         raise NotImplementedError("Play mode not implemented yet.")
